@@ -1,0 +1,51 @@
+17:08:31.462756 === app start ===
+17:08:32.796373 tick transition old=0
+17:08:32.796607 beginRest
+17:08:33.798069 tick ph=1 left=9s restVis=true fs=true
+17:08:34.798191 tick ph=1 left=8s restVis=true fs=true
+17:08:35.812907 tick ph=1 left=7s restVis=true fs=true
+17:08:36.805353 tick ph=1 left=6s restVis=true fs=true
+17:08:37.812555 tick ph=1 left=5s restVis=true fs=true
+17:08:38.804846 tick ph=1 left=4s restVis=true fs=true
+17:08:39.812887 tick ph=1 left=3s restVis=true fs=true
+17:08:40.804664 tick ph=1 left=2s restVis=true fs=true
+17:08:41.804834 tick ph=1 left=1s restVis=true fs=true
+17:08:42.812627 tick ph=1 left=0s restVis=true fs=true
+17:08:43.796399 tick transition old=1
+17:08:43.796523 startWork
+17:08:43.805013 hideRest: request exit fs=true vis=true
+17:08:44.423580 leaveFullScreen event -> hide
+17:08:44.796436 tick ph=0 left=5s restVis=false fs=false
+17:08:45.341598 hideRest fallback check: fs=false vis=false
+17:08:45.796590 tick ph=0 left=4s restVis=false fs=false
+17:08:46.796032 tick ph=0 left=3s restVis=false fs=false
+17:08:47.795837 tick ph=0 left=2s restVis=false fs=false
+17:08:48.796546 tick ph=0 left=1s restVis=false fs=false
+17:08:49.796694 tick ph=0 left=0s restVis=false fs=false
+17:08:50.796386 tick transition old=0
+17:08:50.796416 beginRest
+17:08:51.813296 tick ph=1 left=9s restVis=true fs=true
+17:08:52.808438 tick ph=1 left=8s restVis=true fs=true
+17:08:53.796429 tick ph=1 left=7s restVis=true fs=true
+17:08:54.796629 tick ph=1 left=6s restVis=true fs=true
+17:08:55.796651 tick ph=1 left=5s restVis=true fs=true
+17:08:56.796438 tick ph=1 left=4s restVis=true fs=true
+17:08:57.796452 tick ph=1 left=3s restVis=true fs=true
+17:08:58.797876 tick ph=1 left=2s restVis=true fs=true
+17:08:59.813392 tick ph=1 left=1s restVis=true fs=true
+17:09:00.797951 tick ph=1 left=0s restVis=true fs=true
+17:09:01.796396 tick transition old=1
+17:09:01.796441 startWork
+17:09:01.812419 hideRest: request exit fs=true vis=true
+17:09:02.381043 leaveFullScreen event -> hide
+17:09:02.796651 tick ph=0 left=5s restVis=false fs=false
+17:09:03.336436 hideRest fallback check: fs=false vis=false
+17:09:03.795490 tick ph=0 left=4s restVis=false fs=false
+17:09:04.796553 tick ph=0 left=3s restVis=false fs=false
+17:09:05.795693 tick ph=0 left=2s restVis=false fs=false
+17:09:06.796466 tick ph=0 left=1s restVis=false fs=false
+17:09:07.796048 tick ph=0 left=0s restVis=false fs=false
+17:09:08.796404 tick transition old=0
+17:09:08.796453 beginRest
+17:09:09.796275 tick ph=1 left=9s restVis=true fs=true
+17:09:10.796543 tick ph=1 left=8s restVis=true fs=true
