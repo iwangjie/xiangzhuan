@@ -26,7 +26,7 @@
 
 ## 安装
 
-在 [Releases](https://github.com/iwangjie/xiangzhuan/releases/latest) 下载 `香篆 x.y.z.dmg`，打开后把「香篆」拖进「应用程序」。
+在 [Releases](https://github.com/iwangjie/xiangzhuan/releases/latest) 下载 `xiangzhuan-x.y.z-macos-arm64.dmg`，打开后把「香篆」拖进「应用程序」（也提供 `.zip` 解压即用）。
 
 应用未签名，首次打开如被 Gatekeeper 拦下，右键点选「打开」；或在终端执行：
 
@@ -90,7 +90,7 @@ Native UI ([MyGo](https://github.com/egoist/mygo) native, no webview): no networ
 
 ## Install
 
-Download `香篆 x.y.z.dmg` from [Releases](https://github.com/iwangjie/xiangzhuan/releases/latest) and drag 香篆 into Applications.
+Download `xiangzhuan-x.y.z-macos-arm64.dmg` from [Releases](https://github.com/iwangjie/xiangzhuan/releases/latest) and drag 香篆 into Applications (a `.zip` of the app is also provided).
 
 The app is unsigned; if Gatekeeper blocks the first launch, right-click and choose Open, or run:
 

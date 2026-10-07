@@ -44,13 +44,16 @@ jobs:
       - name: Build app and DMG
         run: go tool mygo build
 
-      - name: Zip the app bundle
-        run: ditto -c -k --keepParent "build/darwin-arm64/香篆.app" "build/darwin-arm64/香篆.app.zip"
+      - name: Stage release assets
+        run: |
+          version="$(jq -r .version mygo.json)"
+          mkdir -p dist
+          cp "build/darwin-arm64/香篆 ${version}.dmg" "dist/xiangzhuan-${version}-macos-arm64.dmg"
+          ditto -c -k --keepParent "build/darwin-arm64/香篆.app" "dist/xiangzhuan-${version}-macos-arm64.zip"
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3
         with:
+          name: 香篆 ${{ github.ref_name }}
           generate_release_notes: true
-          files: |
-            build/darwin-arm64/*.dmg
-            build/darwin-arm64/*.zip
+          files: dist/*
