@@ -61,7 +61,6 @@ type app struct {
 	quitting          atomic.Bool
 	window            *mygo.Window
 	restWindows       map[int64]*mygo.Window
-	restProgressBase  float32
 	tray              *mygo.Tray
 }
 
@@ -81,7 +80,6 @@ func (a *app) beginRest() {
 	a.lastTick = time.Now()
 	a.restStart = a.lastTick
 	a.activeRestDuration = a.restDuration
-	a.restProgressBase = 0
 	a.fadeSeq++
 	seq := a.fadeSeq
 	a.mu.Unlock()
@@ -254,7 +252,7 @@ func (a *app) workView(c *ui.Context) {
 	left := a.remaining
 	s := a.settings
 	a.mu.Unlock()
-	workMin, restSec, extendMin, allowSkip := float64(s.WorkMinutes), float64(s.RestSeconds), float64(s.ExtendMinutes), s.AllowSkip
+	workMin, restSec, postponeMin, allowSkip := float64(s.WorkMinutes), float64(s.RestSeconds), float64(s.PostponeMinutes), s.AllowSkip
 	ui.Column(c).Fill().Center().Gap(16).Padding(24, 28).Children(func() {
 		ui.Column(c).Center().Gap(4).Children(func() {
 			ui.Text(c, "香篆").FontSize(24).Bold()
@@ -275,14 +273,14 @@ func (a *app) workView(c *ui.Context) {
 				ui.Text(c, "秒").FontSize(12).TextColor(c.Theme().TextMuted).Width(28)
 			})
 			ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
-				ui.Text(c, "延长时长").FontSize(13)
+				ui.Text(c, "延后时长").FontSize(13)
 				ui.Spacer(c)
-				ui.NumberInput(c, &extendMin, 1, 30, 1)
+				ui.NumberInput(c, &postponeMin, 1, 30, 1)
 				ui.Text(c, "分钟").FontSize(12).TextColor(c.Theme().TextMuted).Width(28)
 			})
 			ui.Checkbox(c, &allowSkip, "允许跳过休息").FontSize(13)
 		})
-		updated := settings{int(workMin), int(restSec), allowSkip, int(extendMin)}
+		updated := settings{int(workMin), int(restSec), allowSkip, int(postponeMin)}
 		if updated != s {
 			a.applySettings(updated)
 		}
@@ -349,7 +347,7 @@ func pointAt(points []point, t float32) point {
 func (a *app) restView(c *ui.Context) {
 	a.mu.Lock()
 	allowSkip := a.settings.AllowSkip
-	extendMin := a.settings.ExtendMinutes
+	postponeMin := a.settings.PostponeMinutes
 	progress := a.restProgressLocked(time.Now())
 	a.mu.Unlock()
 	c.AnimationFrame()
@@ -387,12 +385,12 @@ func (a *app) restView(c *ui.Context) {
 		})
 		ui.Spacer(c)
 		ui.Row(c).Center().Children(func() {
-			if ui.PrimaryButton(c, fmt.Sprintf("续香 %d 分钟", extendMin)).Clicked() {
-				a.extendRest(time.Now())
+			if ui.PrimaryButton(c, fmt.Sprintf("延后 %d 分钟", postponeMin)).Clicked() {
+				a.postponeRest(time.Now())
 			}
 		})
 		if allowSkip {
-			// A hint, not a button: 续香 owns the button spot now, and
+			// A hint, not a button: 延后 owns the button spot now, and
 			// skipping is Esc or the tray menu.
 			ui.Row(c).Center().Margin(10, 0, 0, 0).Children(func() {
 				ui.Text(c, "拂灰起行   Esc").TextColor(ui.RGB(110, 108, 104)).FontSize(12)

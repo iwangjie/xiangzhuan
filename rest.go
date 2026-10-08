@@ -59,27 +59,23 @@ func (a *app) restProgressLocked(now time.Time) float32 {
 		return 1
 	}
 	elapsed := max(0, min(1, float64(now.Sub(a.restStart))/float64(a.activeRestDuration)))
-	return a.restProgressBase + (1-a.restProgressBase)*float32(elapsed)
+	return float32(elapsed)
 }
 
-func (a *app) extendRest(now time.Time) {
+func (a *app) postponeRest(now time.Time) {
 	a.mu.Lock()
 	if a.phase != resting {
 		a.mu.Unlock()
 		return
 	}
-	progress := a.restProgressLocked(now)
-	left := a.remaining - max(time.Duration(0), now.Sub(a.lastTick))
-	// An already-ended round cannot be resurrected by a late click.
-	if left <= 0 {
-		a.mu.Unlock()
-		return
-	}
-	a.remaining = left + time.Duration(a.settings.ExtendMinutes)*time.Minute
+	a.phase = working
+	duration := time.Duration(a.settings.PostponeMinutes) * time.Minute
+	a.remaining = duration
 	a.lastTick = now
-	a.restStart = now
-	a.restProgressBase = progress
-	a.activeRestDuration = a.remaining
 	a.mu.Unlock()
+	a.hideRest()
+	if a.tray != nil {
+		a.tray.SetTitle(trayTitle(working, duration))
+	}
 	a.invalidate()
 }

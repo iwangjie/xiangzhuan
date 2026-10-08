@@ -9,17 +9,17 @@ import (
 )
 
 type settings struct {
-	WorkMinutes   int  `json:"work_minutes"`
-	RestSeconds   int  `json:"rest_seconds"`
-	AllowSkip     bool `json:"allow_skip"`
-	ExtendMinutes int  `json:"extend_minutes"`
+	WorkMinutes     int  `json:"work_minutes"`
+	RestSeconds     int  `json:"rest_seconds"`
+	AllowSkip       bool `json:"allow_skip"`
+	PostponeMinutes int  `json:"postpone_minutes"`
 }
 
 func defaultSettings() settings { return settings{40, 60, true, 5} }
 func (s settings) normalized() settings {
 	s.WorkMinutes = max(30, min(50, s.WorkMinutes))
 	s.RestSeconds = max(60, min(120, s.RestSeconds))
-	s.ExtendMinutes = max(1, min(30, s.ExtendMinutes))
+	s.PostponeMinutes = max(1, min(30, s.PostponeMinutes))
 	return s
 }
 func loadSettings(path string) settings {

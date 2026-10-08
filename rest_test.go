@@ -8,26 +8,29 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
-func TestExtendRestKeepsProgress(t *testing.T) {
+func TestPostponeRestReturnsToWork(t *testing.T) {
 	start := time.Now()
-	a := &app{phase: resting, settings: defaultSettings(), remaining: time.Minute, lastTick: start, restStart: start, activeRestDuration: time.Minute}
+	a := &app{phase: resting, settings: defaultSettings(), remaining: time.Minute, lastTick: start, restStart: start, activeRestDuration: time.Minute, restDuration: time.Minute}
+	a.settings.AllowSkip = false
 	now := start.Add(30 * time.Second)
-	before := a.restProgressLocked(now)
-	a.extendRest(now)
-	if a.remaining != 330*time.Second || a.restProgressLocked(now) != before {
-		t.Fatalf("remaining=%v progress=%v, before=%v", a.remaining, a.restProgressLocked(now), before)
+	a.postponeRest(now)
+	if a.phase != working || a.remaining != 5*time.Minute || a.lastTick != now {
+		t.Fatal("postpone must start a temporary work countdown")
 	}
-	later := now.Add(time.Minute)
-	if a.restProgressLocked(later) < before {
-		t.Fatal("progress went backwards")
+	a.postponeRest(now.Add(time.Minute))
+	if a.remaining != 5*time.Minute {
+		t.Fatal("working clicks must be ignored")
 	}
-	p := a.restProgressLocked(later)
-	a.extendRest(later)
-	if a.remaining != 570*time.Second || a.restProgressLocked(later) != p {
-		t.Fatal("stacked extension changed progress or remaining")
+	changed, old := a.advance(now.Add(5 * time.Minute))
+	if !changed || old != working || a.phase != resting || a.remaining != time.Minute {
+		t.Fatal("postponed countdown must lead to a full rest")
 	}
-	if a.restProgressLocked(later.Add(a.remaining)) != 1 {
-		t.Fatal("progress did not finish at 1")
+	a.beginRest()
+	if a.restProgressLocked(a.restStart) != 0 || a.activeRestDuration != time.Minute {
+		t.Fatal("next rest must restart from the beginning")
+	}
+	if a.restProgressLocked(a.restStart.Add(time.Minute)) != 1 {
+		t.Fatal("rest must finish at 1")
 	}
 }
 
@@ -49,18 +52,18 @@ func TestOverlayCountMatchesDisplays(t *testing.T) {
 	}
 }
 
-func TestRestViewExtendButtonAndSkipHint(t *testing.T) {
+func TestRestViewPostponeButtonAndSkipHint(t *testing.T) {
 	start := time.Now()
 	a := &app{settings: defaultSettings(), phase: resting, remaining: time.Minute, lastTick: start, restStart: start, activeRestDuration: time.Minute}
 	tst := ui.NewTester(a.restView, 800, 600)
-	if !tst.HasText("续香 5 分钟") || !tst.HasText("拂灰起行   Esc") {
+	if !tst.HasText("延后 5 分钟") || !tst.HasText("拂灰起行   Esc") {
 		t.Fatalf("rest screen texts missing: %v", tst.Texts())
 	}
-	if err := tst.Click("续香 5 分钟"); err != nil {
+	if err := tst.Click("延后 5 分钟"); err != nil {
 		t.Fatal(err)
 	}
-	if a.remaining < 5*time.Minute {
-		t.Fatalf("clicking 续香 did not extend the rest: %v", a.remaining)
+	if a.phase != working || a.remaining != 5*time.Minute {
+		t.Fatalf("clicking 延后 did not extend the rest: %v", a.remaining)
 	}
 	// Skipping turned off: the hint goes away with the Esc shortcut.
 	noSkip := defaultSettings()
@@ -70,7 +73,7 @@ func TestRestViewExtendButtonAndSkipHint(t *testing.T) {
 	if tst.HasText("拂灰起行   Esc") {
 		t.Fatal("the skip hint must hide while skipping is off")
 	}
-	if !tst.HasText("续香 5 分钟") {
-		t.Fatal("续香 must stay available without skipping")
+	if !tst.HasText("延后 5 分钟") {
+		t.Fatal("延后 must stay available without skipping")
 	}
 }
