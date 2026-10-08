@@ -14,7 +14,7 @@ import (
 func TestWorkViewControlsSaveSettings(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "settings.json")
 	a := &app{settings: defaultSettings(), settingsPath: p, remaining: defaultWork, workDuration: defaultWork, restDuration: defaultRest}
-	tst := ui.NewTester(a.workView, 420, 360)
+	tst := ui.NewTester(a.workView, 420, 410)
 	if !tst.HasText("允许跳过休息") || !tst.HasText("工作时长") || !tst.HasText("休息时长") {
 		t.Fatalf("settings controls missing: %v", tst.Texts())
 	}

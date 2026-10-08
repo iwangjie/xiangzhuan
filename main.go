@@ -392,17 +392,10 @@ func (a *app) restView(c *ui.Context) {
 			}
 		})
 		if allowSkip {
-			ui.Row(c).Center().Children(func() {
-				quit := ui.ButtonBase(c)
-				quit.Padding(7, 20).Radius(10)
-				fg := ui.RGB(136, 134, 128)
-				border := ui.RGB(255, 255, 255).Alpha(0.14)
-				if quit.Hovered() {
-					border, fg = ui.RGB(255, 255, 255).Alpha(0.32), ui.RGB(232, 230, 225)
-				}
-				quit.Border(1, border)
-				quit.Children(func() { ui.Text(c, "拂灰起行   Esc").TextColor(fg).FontSize(13) })
-
+			// A hint, not a button: 续香 owns the button spot now, and
+			// skipping is Esc or the tray menu.
+			ui.Row(c).Center().Margin(10, 0, 0, 0).Children(func() {
+				ui.Text(c, "拂灰起行   Esc").TextColor(ui.RGB(110, 108, 104)).FontSize(12)
 			})
 			if c.Shortcut(0, ui.KeyEscape) {
 				a.skipRest()
@@ -477,7 +470,7 @@ func main() {
 		// instead, which would cancel the quit (退出香篆 did nothing).
 		// OnBeforeQuit runs before the windows are closed: drop the veto.
 		mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.quitting.Store(true) })
-		a.window = mygo.NewWindow(mygo.WindowOptions{Title: "香篆", Width: 420, Height: 360, MinWidth: 420, MinHeight: 360, Hidden: true, StateKey: "main.v3", Content: ui.View(a.workView)})
+		a.window = mygo.NewWindow(mygo.WindowOptions{Title: "香篆", Width: 420, Height: 410, MinWidth: 420, MinHeight: 410, Hidden: true, StateKey: "main.v4", Content: ui.View(a.workView)})
 		a.window.OnClose(a.windowClose)
 		if !menuBarApp && !settingsExist(a.settingsPath) {
 			// Nothing shows that the app is running on Windows: the window

@@ -2,7 +2,10 @@
 
 package main
 
-import "github.com/ebitengine/purego/objc"
+import (
+	"github.com/ebitengine/purego/objc"
+	"github.com/egoist/mygo"
+)
 
 // The rest screen is a borderless overlay, not a full screen Space: macOS
 // lets a Space be swiped away, and leaving full screen plays a slow,
@@ -24,14 +27,18 @@ var (
 )
 
 // configureOverlay makes the window of handle a borderless, menu-bar-high
-// overlay. Call it on the main thread once the window exists.
+// overlay. The window must exist. It can be called from any goroutine: AppKit
+// allows window changes on the main thread only, and the rest overlays are
+// created on the tick goroutine.
 func configureOverlay(handle uintptr) {
 	if handle == 0 {
 		return
 	}
-	w := objc.ID(handle)
-	// Borderless: a titled window is held below the menu bar by macOS.
-	w.Send(selSetStyleMask, 0)
-	w.Send(selSetLevel, overlayLevel)
-	w.Send(selSetCollectionBeha, collectionBehavior)
+	mygo.RunOnMain(func() {
+		w := objc.ID(handle)
+		// Borderless: a titled window is held below the menu bar by macOS.
+		w.Send(selSetStyleMask, 0)
+		w.Send(selSetLevel, overlayLevel)
+		w.Send(selSetCollectionBeha, collectionBehavior)
+	})
 }
