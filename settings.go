@@ -34,6 +34,19 @@ func loadSettings(path string) settings {
 	}
 	return candidate.normalized()
 }
+
+// settingsExist reports whether the app has run before: the first launch on
+// a platform without a menu bar writes the settings file (see main.go).
+func settingsExist(path string) bool {
+	if path == "" {
+		// Nowhere to record it: treat every launch as a later one, so the
+		// window does not open every time.
+		return true
+	}
+	_, err := os.Stat(path)
+	return err == nil
+}
+
 func saveSettings(path string, s settings) error {
 	if path == "" {
 		return nil

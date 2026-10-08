@@ -10,7 +10,15 @@ env:
 
 jobs:
   verify:
-    runs-on: macos-15
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The release builds these same targets: this is its rehearsal.
+          - { name: macOS, os: macos-15, platforms: "darwin/arm64,darwin/amd64" }
+          - { name: Windows, os: windows-latest, platforms: "windows/amd64" }
     steps:
       - name: Check out
         uses: actions/checkout@v7
@@ -25,6 +33,7 @@ jobs:
         run: go mod download
 
       - name: Check formatting
+        shell: bash
         run: test -z "$(gofmt -l .)"
 
       - name: Vet
@@ -33,8 +42,5 @@ jobs:
       - name: Test
         run: go test ./...
 
-      - name: Build smoke test
-        run: go build -o build/xiangzhuan .
-
       - name: Verify native app packaging
-        run: go tool mygo build
+        run: go tool mygo build -platform "${{ matrix.platforms }}"

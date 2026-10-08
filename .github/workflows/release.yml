@@ -41,15 +41,33 @@ jobs:
             exit 1
           fi
 
-      - name: Build app and DMG
-        run: go tool mygo build
+      # NSIS builds the Windows installer. Its bottles lag macOS releases,
+      # where brew builds it from source instead; without it mygo build
+      # skips the installer, and the release ships the portable .exe alone.
+      - name: Install NSIS, for the Windows installer
+        continue-on-error: true
+        run: brew install makensis
 
+      - name: Build the app: macOS arm64, macOS Intel and Windows
+        run: go tool mygo build -platform darwin/arm64,darwin/amd64,windows/amd64
+
+      # GitHub strips the CJK from download file names, and the macOS app is
+      # a directory: stage the assets under ASCII names, zipped where needed.
       - name: Stage release assets
         run: |
           version="$(jq -r .version mygo.json)"
           mkdir -p dist
-          cp "build/darwin-arm64/香篆 ${version}.dmg" "dist/xiangzhuan-${version}-macos-arm64.dmg"
-          ditto -c -k --keepParent "build/darwin-arm64/香篆.app" "dist/xiangzhuan-${version}-macos-arm64.zip"
+          for arch in arm64 amd64; do
+            cp "build/darwin-${arch}/香篆 ${version}.dmg" "dist/xiangzhuan-${version}-macos-${arch}.dmg"
+            ditto -c -k --keepParent "build/darwin-${arch}/香篆.app" "dist/xiangzhuan-${version}-macos-${arch}.zip"
+          done
+          cp "build/windows-amd64/香篆.exe" "dist/xiangzhuan-${version}-windows-amd64.exe"
+          setup="build/windows-amd64/香篆 Setup ${version}.exe"
+          if [ -f "$setup" ]; then
+            cp "$setup" "dist/xiangzhuan-${version}-windows-amd64-setup.exe"
+          else
+            echo "::warning::no Windows installer: NSIS (makensis) is not installed"
+          fi
 
       - name: Publish GitHub Release
         uses: softprops/action-gh-release@v3

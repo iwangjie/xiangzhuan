@@ -22,11 +22,14 @@
 - 菜单栏篆印图标 + 剩余分钟读数（最后一分钟显示秒，休息时显示「休」）
 - 全屏覆盖层休息屏：淡入淡出、零黑帧、滑动切不走
 - 全中文界面；退出干净
-- macOS 12+ · Apple Silicon（arm64）
+- macOS 12+ · Apple Silicon（arm64）与 Intel（amd64）；Windows x64（实验性）
 
 ## 安装
 
-在 [Releases](https://github.com/iwangjie/xiangzhuan/releases/latest) 下载 `xiangzhuan-x.y.z-macos-arm64.dmg`，打开后把「香篆」拖进「应用程序」（也提供 `.zip` 解压即用）。
+在 [Releases](https://github.com/iwangjie/xiangzhuan/releases/latest) 下载：
+
+- macOS：`xiangzhuan-x.y.z-macos-arm64.dmg`（Apple Silicon）或 `xiangzhuan-x.y.z-macos-amd64.dmg`（Intel），打开后把「香篆」拖进「应用程序」（也提供 `.zip` 解压即用）。
+- Windows x64：`xiangzhuan-x.y.z-windows-amd64-setup.exe` 安装，或直接运行免安装的 `xiangzhuan-x.y.z-windows-amd64.exe`。Windows 版是实验性构建，尚未在真机验证：应用驻在通知区（图标不显示文字，倒计时在悬停提示里），首次启动会打开主窗口。
 
 应用未签名，首次打开如被 Gatekeeper 拦下，右键点选「打开」；或在终端执行：
 
@@ -37,6 +40,7 @@ xattr -d com.apple.quarantine /Applications/香篆.app
 ## 使用
 
 - 点菜单栏篆印图标：打开香篆 / 开始工作（按设置的分钟数）/ 即刻休息（按设置的秒数）/ 跳过休息 / 退出香篆
+- Windows：右键点通知区图标打开同一份菜单
 - 主窗口里调整工作时长、休息时长与是否允许跳过，改动即时保存
 - 休息中按 `Esc` 或点「拂灰起行」提前结束（须允许跳过）
 
@@ -49,8 +53,11 @@ xattr -d com.apple.quarantine /Applications/香篆.app
 ```sh
 git clone https://github.com/iwangjie/xiangzhuan.git
 cd xiangzhuan
-CGO_ENABLED=0 go tool mygo build    # → build/darwin-arm64/香篆.app 与 DMG
+CGO_ENABLED=0 go tool mygo build -platform darwin/arm64,darwin/amd64,windows/amd64
+# → build/darwin-arm64|darwin-amd64/香篆.app 与 DMG，build/windows-amd64/香篆.exe 与 Setup
 ```
+
+> Windows 安装包由 NSIS 生成（`brew install makensis`）；没装时只产出免安装的 exe。
 
 测试与静态检查：
 
@@ -86,11 +93,14 @@ Native UI ([MyGo](https://github.com/egoist/mygo) native, no webview): no networ
 - Menu bar seal icon with minutes left (seconds in the last minute; 休 during rest)
 - Full-screen overlay rest screen: fades in and out, no black frames, cannot be swiped away
 - Chinese UI throughout; quits cleanly
-- macOS 12+ · Apple Silicon (arm64)
+- macOS 12+ · Apple Silicon (arm64) and Intel (amd64); Windows x64 (experimental)
 
 ## Install
 
-Download `xiangzhuan-x.y.z-macos-arm64.dmg` from [Releases](https://github.com/iwangjie/xiangzhuan/releases/latest) and drag 香篆 into Applications (a `.zip` of the app is also provided).
+From [Releases](https://github.com/iwangjie/xiangzhuan/releases/latest):
+
+- macOS: `xiangzhuan-x.y.z-macos-arm64.dmg` (Apple Silicon) or `xiangzhuan-x.y.z-macos-amd64.dmg` (Intel); drag 香篆 into Applications (a `.zip` of the app is also provided).
+- Windows x64: install with `xiangzhuan-x.y.z-windows-amd64-setup.exe`, or run the portable `xiangzhuan-x.y.z-windows-amd64.exe`. The Windows build is experimental and has not been checked on a real machine: the app lives in the notification area (its icon carries no text, the countdown is in the tooltip), and the first launch opens the main window.
 
 The app is unsigned; if Gatekeeper blocks the first launch, right-click and choose Open, or run:
 
@@ -101,6 +111,7 @@ xattr -d com.apple.quarantine /Applications/香篆.app
 ## Usage
 
 - Click the menu bar icon: Open / Start work (your minutes) / Rest now (your seconds) / Skip rest / Quit
+- Windows: right-click the notification area icon for the same menu
 - Adjust work and rest length and the skip permission in the main window; saved instantly
 - Press `Esc` or click the button to end a rest early (when skipping is allowed)
 
@@ -111,8 +122,11 @@ Requires macOS and Go 1.27.1+ (Xcode not needed):
 ```sh
 git clone https://github.com/iwangjie/xiangzhuan.git
 cd xiangzhuan
-CGO_ENABLED=0 go tool mygo build    # → build/darwin-arm64/香篆.app and a DMG
+CGO_ENABLED=0 go tool mygo build -platform darwin/arm64,darwin/amd64,windows/amd64
+# → build/darwin-arm64|darwin-amd64/香篆.app and its DMG, build/windows-amd64/香篆.exe and Setup
 ```
+
+> The Windows installer is built with NSIS (`brew install makensis`); without it you get the portable .exe alone.
 
 Tests and vet:
 
