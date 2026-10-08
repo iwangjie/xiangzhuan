@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/egoist/mygo"
+	"github.com/egoist/mygo/ui"
 )
 
 func TestExtendRestKeepsProgress(t *testing.T) {
@@ -45,5 +46,31 @@ func TestOverlayCountMatchesDisplays(t *testing.T) {
 	a.syncOverlays([]mygo.Display{{ID: 1}, {ID: 3}}, create, place, remove)
 	if a.restWindows[1] != first || created != 3 || removed != 1 || len(a.overlayWindows()) != 2 {
 		t.Fatal("display reconciliation did not reuse and remove overlays")
+	}
+}
+
+func TestRestViewExtendButtonAndSkipHint(t *testing.T) {
+	start := time.Now()
+	a := &app{settings: defaultSettings(), phase: resting, remaining: time.Minute, lastTick: start, restStart: start, activeRestDuration: time.Minute}
+	tst := ui.NewTester(a.restView, 800, 600)
+	if !tst.HasText("续香 5 分钟") || !tst.HasText("拂灰起行   Esc") {
+		t.Fatalf("rest screen texts missing: %v", tst.Texts())
+	}
+	if err := tst.Click("续香 5 分钟"); err != nil {
+		t.Fatal(err)
+	}
+	if a.remaining < 5*time.Minute {
+		t.Fatalf("clicking 续香 did not extend the rest: %v", a.remaining)
+	}
+	// Skipping turned off: the hint goes away with the Esc shortcut.
+	noSkip := defaultSettings()
+	noSkip.AllowSkip = false
+	b := &app{settings: noSkip, phase: resting, remaining: time.Minute, lastTick: start, restStart: start, activeRestDuration: time.Minute}
+	tst = ui.NewTester(b.restView, 800, 600)
+	if tst.HasText("拂灰起行   Esc") {
+		t.Fatal("the skip hint must hide while skipping is off")
+	}
+	if !tst.HasText("续香 5 分钟") {
+		t.Fatal("续香 must stay available without skipping")
 	}
 }

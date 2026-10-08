@@ -7,18 +7,20 @@
 
 驻在 macOS 菜单栏的休息提醒：工作到点，全屏燃香；一炷香尽，回到案前。
 
-![休息屏](docs/0.2.0/rest-no-skip.png)
+![休息屏](docs/0.5.0/rest-main-display.png)
 
 ## 是什么
 
-香篆常驻菜单栏，按设定的工作时长倒计时。时间一到，屏幕淡入一方篆印与一柱燃香：香头从起点匀速烧向终点，烧尽自动回到下一轮工作。休息屏是无边框覆盖层，盖住菜单栏与 Dock，三指左右滑动也切不走；想提前结束，按 `Esc` 拂灰起行（也可以在设置里关上这条路）。
+香篆常驻菜单栏，按设定的工作时长倒计时。时间一到，全体屏幕淡入一方篆印与一柱燃香：香头从起点匀速烧向终点，烧尽自动回到下一轮工作。休息屏是无边框覆盖层，接几块屏就盖满几块，盖住菜单栏与 Dock，三指左右滑动也切不走；想提前结束，按 `Esc` 拂灰起行（也可以在设置里关上这条路），或点「续香」再静一炷香的时间。
 
 原生界面（[MyGo](https://github.com/egoist/mygo) native UI，无 webview），没有网络请求、没有账号、不收集任何数据。
 
 ## 功能
 
-- 工作 30–50 分钟、休息 60–120 秒，随时调整；改完即存，下一轮生效
-- 「允许跳过休息」可关：关掉后休息屏不出现跳过按钮，`Esc` 也失效，真正独占禅定
+- 工作 30–50 分钟、休息 60–120 秒、续香 1–30 分钟，随时调整；改完即存，下一轮生效
+- 多屏同步：休息屏覆盖全部显示器，同进同出
+- 「续香 N 分钟」：一键给当前这轮休息续时长，香头原地续燃不回头；连点可叠加
+- 「允许跳过休息」可关：关掉后休息屏不出现跳过通道，`Esc` 也失效，真正独占禅定
 - 菜单栏篆印图标 + 剩余分钟读数（最后一分钟显示秒，休息时显示「休」）
 - 全屏覆盖层休息屏：淡入淡出、零黑帧、滑动切不走
 - 全中文界面；退出干净
@@ -41,10 +43,10 @@ xattr -d com.apple.quarantine /Applications/香篆.app
 
 - 点菜单栏篆印图标：打开香篆 / 开始工作（按设置的分钟数）/ 即刻休息（按设置的秒数）/ 跳过休息 / 退出香篆
 - Windows：右键点通知区图标打开同一份菜单
-- 主窗口里调整工作时长、休息时长与是否允许跳过，改动即时保存
-- 休息中按 `Esc` 或点「拂灰起行」提前结束（须允许跳过）
+- 主窗口里调整工作时长、休息时长、续香时长与是否允许跳过，改动即时保存
+- 休息中点「续香 N 分钟」再静一会；按 `Esc` 提前结束（须允许跳过）
 
-![设置界面](docs/0.2.0/settings-window.png)
+![设置界面](docs/0.5.0/settings-window.png)
 
 ## 从源码构建
 
@@ -82,14 +84,16 @@ A break reminder that lives in your macOS menu bar. When work time is up, a stic
 
 ## What it is
 
-Xiangzhuan (香篆, "incense seal") sits in the menu bar and counts down your work session. When time is up, the screen fades into a seal and a burning stick of incense — the ember travels at a steady pace along the path; when it reaches the end, the next work session begins. The rest screen is a borderless overlay that covers the menu bar and Dock and cannot be swiped away with a three-finger gesture. To end a rest early, press `Esc` to brush the ash aside (this can be disallowed in settings).
+Xiangzhuan (香篆, "incense seal") sits in the menu bar and counts down your work session. When time is up, every display fades into a seal and a burning stick of incense — the ember travels at a steady pace along the path; when it reaches the end, the next work session begins. The rest screen is a borderless overlay covering each display, the menu bar and the Dock alike, and cannot be swiped away with a three-finger gesture. To end a rest early, press `Esc` to brush the ash aside (this can be disallowed in settings), or click 续香 to burn one more stick.
 
 Native UI ([MyGo](https://github.com/egoist/mygo) native, no webview): no network requests, no account, no telemetry.
 
 ## Features
 
-- Work 30–50 min, rest 60–120 s; changes save immediately and apply from the next round
-- "Allow skipping" can be turned off: no skip button, `Esc` disabled — a true full-screen retreat
+- Work 30–50 min, rest 60–120 s, extend 1–30 min; changes save immediately and apply from the next round
+- Multi-display: the rest screen covers every display and fades in and out together
+- "Extend by N minutes": adds time to the current rest — the ember keeps its place and burns on, never backwards; click again to stack
+- "Allow skipping" can be turned off: no skip route, `Esc` disabled — a true full-screen retreat
 - Menu bar seal icon with minutes left (seconds in the last minute; 休 during rest)
 - Full-screen overlay rest screen: fades in and out, no black frames, cannot be swiped away
 - Chinese UI throughout; quits cleanly
@@ -112,8 +116,8 @@ xattr -d com.apple.quarantine /Applications/香篆.app
 
 - Click the menu bar icon: Open / Start work (your minutes) / Rest now (your seconds) / Skip rest / Quit
 - Windows: right-click the notification area icon for the same menu
-- Adjust work and rest length and the skip permission in the main window; saved instantly
-- Press `Esc` or click the button to end a rest early (when skipping is allowed)
+- Adjust work length, rest length, extension length and the skip permission in the main window; saved instantly
+- During a rest, click 续香 (extend) to stay a while longer, or press `Esc` for an early end (when skipping is allowed)
 
 ## Build from source
 
