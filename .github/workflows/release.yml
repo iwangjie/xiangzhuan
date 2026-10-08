@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+  # Builds without publishing, to rehearse a release: the log shows what was
+  # staged, and whether NSIS installs for the Windows installer.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -33,6 +36,7 @@ jobs:
           go test ./...
 
       - name: Check tag matches version
+        if: github.event_name == 'push'
         run: |
           tag="${GITHUB_REF_NAME#v}"
           version="$(jq -r .version mygo.json)"
@@ -41,17 +45,42 @@ jobs:
             exit 1
           fi
 
-      - name: Build app and DMG
-        run: go tool mygo build
+      # The Windows app is built here too, not on a Windows runner: its
+      # NSIS installer is a script mygo writes in UTF-8, and makensis on
+      # Windows reads scripts in the ANSI codepage unless they start with a
+      # BOM, so it cannot find this app's 香篆.exe.
+      #
+      # NSIS itself comes from brew; its bottles lag macOS releases, where
+      # brew builds it from source instead. Without it mygo build skips the
+      # installer, and the release ships the portable .exe alone.
+      - name: Install NSIS, for the Windows installer
+        continue-on-error: true
+        run: brew install makensis
 
+      - name: Build the app for macOS (arm64, Intel) and Windows
+        run: go tool mygo build -platform darwin/arm64,darwin/amd64,windows/amd64
+
+      # GitHub strips the CJK from download file names, and the macOS app is
+      # a directory: stage the assets under ASCII names, zipped where needed.
       - name: Stage release assets
         run: |
           version="$(jq -r .version mygo.json)"
           mkdir -p dist
-          cp "build/darwin-arm64/香篆 ${version}.dmg" "dist/xiangzhuan-${version}-macos-arm64.dmg"
-          ditto -c -k --keepParent "build/darwin-arm64/香篆.app" "dist/xiangzhuan-${version}-macos-arm64.zip"
+          for arch in arm64 amd64; do
+            cp "build/darwin-${arch}/香篆 ${version}.dmg" "dist/xiangzhuan-${version}-macos-${arch}.dmg"
+            ditto -c -k --keepParent "build/darwin-${arch}/香篆.app" "dist/xiangzhuan-${version}-macos-${arch}.zip"
+          done
+          cp "build/windows-amd64/香篆.exe" "dist/xiangzhuan-${version}-windows-amd64.exe"
+          setup="build/windows-amd64/香篆 Setup ${version}.exe"
+          if [ -f "$setup" ]; then
+            cp "$setup" "dist/xiangzhuan-${version}-windows-amd64-setup.exe"
+          else
+            echo "::warning::no Windows installer: NSIS (makensis) is not installed"
+          fi
+          ls -l dist
 
       - name: Publish GitHub Release
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v3
         with:
           name: 香篆 ${{ github.ref_name }}

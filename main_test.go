@@ -138,3 +138,27 @@ func TestTrayTitle(t *testing.T) {
 		}
 	}
 }
+
+// TestTrayTooltip pins the countdown of the notification area's tooltip,
+// which is where the remaining time goes on platforms whose tray icon shows
+// no title beside it.
+func TestTrayTooltip(t *testing.T) {
+	cases := []struct {
+		ph   phase
+		left time.Duration
+		want string
+	}{
+		{working, 40 * time.Minute, "香篆 · 工作中，还剩 40 分钟"},
+		{working, 90 * time.Second, "香篆 · 工作中，还剩 1 分钟"},
+		{working, 59 * time.Second, "香篆 · 工作中，还剩 59 秒"},
+		{working, 0, "香篆 · 工作中，还剩 0 秒"},
+		{working, -time.Minute, "香篆 · 工作中，还剩 0 秒"},
+		{resting, 60 * time.Second, "香篆 · 休息中，还剩 60 秒"},
+		{resting, 3 * time.Second, "香篆 · 休息中，还剩 3 秒"},
+	}
+	for _, c := range cases {
+		if got := trayTooltip(c.ph, c.left); got != c.want {
+			t.Errorf("trayTooltip(%v, %v) = %q, want %q", c.ph, c.left, got, c.want)
+		}
+	}
+}

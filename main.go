@@ -16,7 +16,10 @@ import (
 )
 
 //go:embed resources/tray.png
-var trayIcon []byte
+var trayIconTemplate []byte
+
+//go:embed resources/tray-windows.png
+var trayIconColored []byte
 
 type phase int
 
@@ -31,6 +34,10 @@ var incensePath = []point{{.18, .18}, {.82, .18}, {.82, .82}, {.18, .82}, {.18, 
 
 const defaultWork = 40 * time.Minute
 const defaultRest = 60 * time.Second
+
+// trayTagline is the tray icon's tooltip on macOS, where the countdown sits
+// next to the icon as its title instead.
+const trayTagline = "香篆 · 一篆香消，万事且抛"
 
 type app struct {
 	mu                         sync.Mutex
@@ -190,6 +197,7 @@ func (a *app) tick() {
 	a.mu.Unlock()
 	if a.tray != nil {
 		a.tray.SetTitle(trayTitle(ph, left))
+		updateTrayTooltip(a.tray, ph, left)
 	}
 	a.invalidate()
 }
@@ -211,6 +219,21 @@ func trayTitle(ph phase, left time.Duration) string {
 	}
 	return fmt.Sprintf("%d", secs)
 }
+
+// trayTooltip is the countdown of the notification area's tooltip. An icon
+// there carries no text beside it (Windows ignores the title the menu bar
+// shows), so the remaining time lives in the tooltip.
+func trayTooltip(ph phase, left time.Duration) string {
+	secs := max(0, int(left/time.Second))
+	if ph == resting {
+		return fmt.Sprintf("香篆 · 休息中，还剩 %d 秒", secs)
+	}
+	if secs >= 60 {
+		return fmt.Sprintf("香篆 · 工作中，还剩 %d 分钟", secs/60)
+	}
+	return fmt.Sprintf("香篆 · 工作中，还剩 %d 秒", secs)
+}
+
 func (a *app) workView(c *ui.Context) {
 	a.mu.Lock()
 	left := a.remaining
@@ -426,23 +449,43 @@ func main() {
 		a.workDuration = time.Duration(a.settings.WorkMinutes) * time.Minute
 		a.restDuration = time.Duration(a.settings.RestSeconds) * time.Second
 		a.remaining = a.workDuration
-		mygo.App.SetMenu(appMenuBar())
+		// macOS shows this menu bar beside the app's windows; Windows would
+		// put it inside the settings window, where its macOS roles (关于香篆、
+		// 隐藏其他、全部显示) do nothing. 退出香篆 is in the tray menu there.
+		if menuBarApp {
+			mygo.App.SetMenu(appMenuBar())
+		}
 		// A quit closes every window; this window vetoes closes to hide
 		// instead, which would cancel the quit (退出香篆 did nothing).
 		// OnBeforeQuit runs before the windows are closed: drop the veto.
 		mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.quitting.Store(true) })
 		a.window = mygo.NewWindow(mygo.WindowOptions{Title: "香篆", Width: 420, Height: 340, MinWidth: 420, MinHeight: 340, Hidden: true, StateKey: "main.v2", Content: ui.View(a.workView)})
 		a.window.OnClose(a.windowClose)
-		a.restWindow = mygo.NewWindow(mygo.WindowOptions{Title: "香篆 · 休息", Frameless: true, AlwaysOnTop: true, DisableShadow: true, Hidden: true, Content: ui.View(a.restView)})
+		if !menuBarApp && !settingsExist(a.settingsPath) {
+			// Nothing shows that the app is running on Windows: the window
+			// is hidden and the tray icon is small. Open the window on the
+			// first launch, and record it in the settings file so that the
+			// launches after it come up quiet.
+			a.window.Show()
+			if err := saveSettings(a.settingsPath, a.settings); err != nil {
+				log.Printf("保存设置失败: %v", err)
+			}
+		}
+		// The rest screen is an overlay above the other windows, not a
+		// window of its own in the taskbar: SkipTaskbar leaves it out of
+		// the Windows taskbar, and macOS ignores it (overlay_darwin.go).
+		a.restWindow = mygo.NewWindow(mygo.WindowOptions{Title: "香篆 · 休息", Frameless: true, AlwaysOnTop: true, DisableShadow: true, SkipTaskbar: true, Hidden: true, Content: ui.View(a.restView)})
 		configureOverlay(a.restWindow.NativeHandle())
 		menu := trayMenu(a)
 		var err error
-		a.tray, err = mygo.NewTray(mygo.TrayOptions{Icon: trayIcon, IconIsTemplate: true, Title: fmt.Sprintf("%d", int(a.workDuration/time.Minute)), ToolTip: "香篆 · 一篆香消，万事且抛", Menu: menu})
+		icon, template := trayIcon()
+		a.tray, err = mygo.NewTray(mygo.TrayOptions{Icon: icon, IconIsTemplate: template, Title: trayTitle(working, a.workDuration), ToolTip: trayTagline, Menu: menu})
 		if err != nil {
 			log.Printf("tray creation failed: %v", err)
 			log.Fatal(err)
 		}
-		log.Printf("tray created (%d icon bytes)", len(trayIcon))
+		log.Printf("tray created (%d icon bytes)", len(icon))
+		updateTrayTooltip(a.tray, working, a.workDuration)
 		go func() {
 			t := time.NewTicker(time.Second)
 			defer t.Stop()
