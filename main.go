@@ -56,6 +56,8 @@ type app struct {
 	// quitting turns true when a quit begins: the work window's close
 	// handler vetoes closes to hide the window instead, and that veto
 	// must not cancel the quit itself.
+	updateBusy         atomic.Bool
+	updateDownloading  atomic.Bool
 	quitting           atomic.Bool
 	window, restWindow *mygo.Window
 	tray               *mygo.Tray
@@ -197,7 +199,9 @@ func (a *app) tick() {
 	a.mu.Unlock()
 	if a.tray != nil {
 		a.tray.SetTitle(trayTitle(ph, left))
-		updateTrayTooltip(a.tray, ph, left)
+		if !a.updateDownloading.Load() {
+			updateTrayTooltip(a.tray, ph, left)
+		}
 	}
 	a.invalidate()
 }
@@ -246,18 +250,18 @@ func (a *app) workView(c *ui.Context) {
 			ui.Text(c, "焚香理绪，神定案明。").FontSize(13).TextColor(c.Theme().TextMuted)
 			ui.Textf(c, "%02d:%02d", int(left/time.Minute), int(left/time.Second)%60).FontSize(38).Bold()
 		})
-		ui.Column(c).Radius(8).Padding(12, 16).Gap(10).Children(func() {
-			ui.Row(c).Gap(6).Children(func() {
+		ui.Column(c).Width(280).Background(c.Theme().Surface).Border(1, c.Theme().Border).Radius(8).Padding(14, 16).Gap(12).Children(func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 				ui.Text(c, "工作时长").FontSize(13)
 				ui.Spacer(c)
 				ui.NumberInput(c, &workMin, 30, 50, 1)
-				ui.Text(c, "分钟").FontSize(12).TextColor(c.Theme().TextMuted)
+				ui.Text(c, "分钟").FontSize(12).TextColor(c.Theme().TextMuted).Width(28)
 			})
-			ui.Row(c).Gap(6).Children(func() {
+			ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
 				ui.Text(c, "休息时长").FontSize(13)
 				ui.Spacer(c)
 				ui.NumberInput(c, &restSec, 60, 120, 5)
-				ui.Text(c, "秒").FontSize(12).TextColor(c.Theme().TextMuted)
+				ui.Text(c, "秒").FontSize(12).TextColor(c.Theme().TextMuted).Width(28)
 			})
 			ui.Checkbox(c, &allowSkip, "允许跳过休息").FontSize(13)
 		})
@@ -265,7 +269,7 @@ func (a *app) workView(c *ui.Context) {
 		if updated != s {
 			a.applySettings(updated)
 		}
-		if ui.PrimaryButton(c, "重新起香").Width(110).Clicked() {
+		if ui.PrimaryButton(c, "重新起香").Width(130).Clicked() {
 			a.startWork()
 		}
 	})
@@ -421,6 +425,7 @@ func trayMenu(a *app) *mygo.Menu {
 		{Label: fmt.Sprintf("开始工作 %d 分钟", s.WorkMinutes), Click: func(*mygo.MenuItem, *mygo.Window) { a.startWork() }},
 		{Label: fmt.Sprintf("即刻休息 %d 秒", s.RestSeconds), Click: func(*mygo.MenuItem, *mygo.Window) { a.beginRest() }},
 		{Label: "跳过休息", Disabled: !s.AllowSkip, Click: func(*mygo.MenuItem, *mygo.Window) { a.skipRest() }},
+		{Label: "检查更新…", Click: func(*mygo.MenuItem, *mygo.Window) { go a.checkUpdates(true) }},
 		mygo.Separator(),
 		{Role: mygo.RoleQuit, Label: "退出香篆"},
 	})
@@ -485,6 +490,10 @@ func main() {
 			log.Fatal(err)
 		}
 		log.Printf("tray created (%d icon bytes)", len(icon))
+		go func() {
+			time.Sleep(8 * time.Second)
+			a.checkUpdates(false)
+		}()
 		updateTrayTooltip(a.tray, working, a.workDuration)
 		go func() {
 			t := time.NewTicker(time.Second)

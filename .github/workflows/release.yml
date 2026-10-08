@@ -58,6 +58,8 @@ jobs:
         run: brew install makensis
 
       - name: Build the app for macOS (arm64, Intel) and Windows
+        env:
+          MYGO_UPDATER_PRIVATE_KEY: ${{ secrets.MYGO_UPDATER_PRIVATE_KEY }}
         run: go tool mygo build -platform darwin/arm64,darwin/amd64,windows/amd64
 
       # GitHub strips the CJK from download file names, and the macOS app is
@@ -77,6 +79,10 @@ jobs:
           else
             echo "::warning::no Windows installer: NSIS (makensis) is not installed"
           fi
+          find build -type f \( -name 'app-*.tar.gz' -o -name 'update-*.json' -o -name '*.delta' \) -exec cp {} dist/ \;
+          for target in darwin-arm64 darwin-amd64 windows-amd64; do
+            test -f "dist/update-${target}.json"
+          done
           ls -l dist
 
       - name: Publish GitHub Release
