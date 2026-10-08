@@ -14,7 +14,7 @@ import (
 func TestWorkViewControlsSaveSettings(t *testing.T) {
 	p := filepath.Join(t.TempDir(), "settings.json")
 	a := &app{settings: defaultSettings(), settingsPath: p, remaining: defaultWork, workDuration: defaultWork, restDuration: defaultRest}
-	tst := ui.NewTester(a.workView, 420, 340)
+	tst := ui.NewTester(a.workView, 420, 360)
 	if !tst.HasText("允许跳过休息") || !tst.HasText("工作时长") || !tst.HasText("休息时长") {
 		t.Fatalf("settings controls missing: %v", tst.Texts())
 	}
@@ -22,7 +22,7 @@ func TestWorkViewControlsSaveSettings(t *testing.T) {
 	if err := tst.Click("允许跳过休息"); err != nil {
 		t.Fatal(err)
 	}
-	if got := loadSettings(p); got != (settings{40, 60, false}) {
+	if got := loadSettings(p); got != (settings{40, 60, false, 5}) {
 		t.Fatalf("unchecking did not save: %+v", got)
 	}
 	// Check it again: back to the defaults.
@@ -36,7 +36,7 @@ func TestWorkViewControlsSaveSettings(t *testing.T) {
 	if err := tst.Click("+"); err != nil {
 		t.Fatal(err)
 	}
-	if got := loadSettings(p); got != (settings{41, 60, true}) {
+	if got := loadSettings(p); got != (settings{41, 60, true, 5}) {
 		t.Fatalf("stepping up did not save: %+v", got)
 	}
 	// 重新起香 starts a fresh round with the stored 41 minutes.

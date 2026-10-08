@@ -95,14 +95,14 @@ func TestTrayMenuFollowsSettings(t *testing.T) {
 		}
 		return m
 	}
-	m := labels(&app{settings: settings{45, 90, false}})
+	m := labels(&app{settings: settings{45, 90, false, 5}})
 	if m["开始工作 45 分钟"] == nil || m["即刻休息 90 秒"] == nil {
 		t.Errorf("labels do not follow the settings: %v", m)
 	}
 	if it := m["跳过休息"]; it == nil || !it.Disabled {
 		t.Error("跳过休息 must be disabled while skipping is off")
 	}
-	m = labels(&app{settings: settings{40, 60, true}})
+	m = labels(&app{settings: settings{40, 60, true, 5}})
 	if m["开始工作 40 分钟"] == nil || m["即刻休息 60 秒"] == nil {
 		t.Errorf("default labels wrong: %v", m)
 	}

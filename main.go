@@ -56,11 +56,13 @@ type app struct {
 	// quitting turns true when a quit begins: the work window's close
 	// handler vetoes closes to hide the window instead, and that veto
 	// must not cancel the quit itself.
-	updateBusy         atomic.Bool
-	updateDownloading  atomic.Bool
-	quitting           atomic.Bool
-	window, restWindow *mygo.Window
-	tray               *mygo.Tray
+	updateBusy        atomic.Bool
+	updateDownloading atomic.Bool
+	quitting          atomic.Bool
+	window            *mygo.Window
+	restWindows       map[int64]*mygo.Window
+	restProgressBase  float32
+	tray              *mygo.Tray
 }
 
 func (a *app) startWork() {
@@ -79,21 +81,22 @@ func (a *app) beginRest() {
 	a.lastTick = time.Now()
 	a.restStart = a.lastTick
 	a.activeRestDuration = a.restDuration
+	a.restProgressBase = 0
 	a.fadeSeq++
 	seq := a.fadeSeq
 	a.mu.Unlock()
-	if a.restWindow != nil {
-		// The overlay covers the whole screen of the display the rest is
-		// on, then fades in: no full screen Space to swipe away, and no
-		// window-shrinking system animation when it ends.
-		if d := mygo.Screen.PrimaryDisplay(); d.Bounds.Width > 0 {
-			a.restWindow.SetBounds(d.Bounds)
-		}
-		a.restWindow.SetOpacity(0)
-		a.restWindow.Show()
+	var windows []*mygo.Window
+	if a.window != nil {
+		windows = a.syncRestWindows(mygo.Screen.Displays())
+	}
+	for _, w := range windows {
+		w.SetOpacity(0)
+		w.Show()
+	}
+	if len(windows) > 0 {
 		mygo.App.Focus()
-		a.restWindow.Focus()
-		go a.fadeRest(1, 10, seq)
+		windows[0].Focus()
+		go a.fadeRest(windows, 1, 10, seq)
 	}
 	a.invalidate()
 }
@@ -116,7 +119,8 @@ func (a *app) windowClose(e *mygo.CloseEvent) {
 	}
 }
 func (a *app) hideRest() {
-	if a.restWindow == nil {
+	windows := a.overlayWindows()
+	if len(windows) == 0 {
 		return
 	}
 	a.mu.Lock()
@@ -124,22 +128,27 @@ func (a *app) hideRest() {
 	seq := a.fadeSeq
 	a.mu.Unlock()
 	go func() {
-		a.fadeRest(0, 15, seq)
+		a.fadeRest(windows, 0, 15, seq)
 		a.mu.Lock()
 		stale := a.fadeSeq != seq
 		a.mu.Unlock()
 		if stale {
 			return
 		}
-		a.restWindow.Hide()
-		a.restWindow.SetOpacity(1)
+		for _, w := range windows {
+			w.Hide()
+			w.SetOpacity(1)
+		}
 	}()
 }
 
 // fadeRest eases the rest window to the given opacity in steps of 16ms,
 // giving up once a newer fade has taken over.
-func (a *app) fadeRest(to float64, steps, seq int) {
-	from := a.restWindow.Opacity()
+func (a *app) fadeRest(windows []*mygo.Window, to float64, steps, seq int) {
+	from := make([]float64, len(windows))
+	for i, w := range windows {
+		from[i] = w.Opacity()
+	}
 	for i := 1; i <= steps; i++ {
 		a.mu.Lock()
 		stale := a.fadeSeq != seq
@@ -147,7 +156,9 @@ func (a *app) fadeRest(to float64, steps, seq int) {
 		if stale {
 			return
 		}
-		a.restWindow.SetOpacity(from + (to-from)*float64(i)/float64(steps))
+		for j, w := range windows {
+			w.SetOpacity(from[j] + (to-from[j])*float64(i)/float64(steps))
+		}
 		time.Sleep(16 * time.Millisecond)
 	}
 }
@@ -155,8 +166,8 @@ func (a *app) invalidate() {
 	if a.window != nil {
 		a.window.Invalidate()
 	}
-	if a.restWindow != nil {
-		a.restWindow.Invalidate()
+	for _, w := range a.overlayWindows() {
+		w.Invalidate()
 	}
 }
 func (a *app) advance(now time.Time) (bool, phase) {
@@ -243,7 +254,7 @@ func (a *app) workView(c *ui.Context) {
 	left := a.remaining
 	s := a.settings
 	a.mu.Unlock()
-	workMin, restSec, allowSkip := float64(s.WorkMinutes), float64(s.RestSeconds), s.AllowSkip
+	workMin, restSec, extendMin, allowSkip := float64(s.WorkMinutes), float64(s.RestSeconds), float64(s.ExtendMinutes), s.AllowSkip
 	ui.Column(c).Fill().Center().Gap(16).Padding(24, 28).Children(func() {
 		ui.Column(c).Center().Gap(4).Children(func() {
 			ui.Text(c, "香篆").FontSize(24).Bold()
@@ -263,9 +274,15 @@ func (a *app) workView(c *ui.Context) {
 				ui.NumberInput(c, &restSec, 60, 120, 5)
 				ui.Text(c, "秒").FontSize(12).TextColor(c.Theme().TextMuted).Width(28)
 			})
+			ui.Row(c).AlignItems(ui.Center).Gap(6).Children(func() {
+				ui.Text(c, "延长时长").FontSize(13)
+				ui.Spacer(c)
+				ui.NumberInput(c, &extendMin, 1, 30, 1)
+				ui.Text(c, "分钟").FontSize(12).TextColor(c.Theme().TextMuted).Width(28)
+			})
 			ui.Checkbox(c, &allowSkip, "允许跳过休息").FontSize(13)
 		})
-		updated := settings{int(workMin), int(restSec), allowSkip}
+		updated := settings{int(workMin), int(restSec), allowSkip, int(extendMin)}
 		if updated != s {
 			a.applySettings(updated)
 		}
@@ -331,17 +348,10 @@ func pointAt(points []point, t float32) point {
 }
 func (a *app) restView(c *ui.Context) {
 	a.mu.Lock()
-	total := a.activeRestDuration
 	allowSkip := a.settings.AllowSkip
-	start := a.restStart
+	extendMin := a.settings.ExtendMinutes
+	progress := a.restProgressLocked(time.Now())
 	a.mu.Unlock()
-	progress := float32(time.Since(start)) / float32(total)
-	if progress < 0 {
-		progress = 0
-	}
-	if progress > 1 {
-		progress = 1
-	}
 	c.AnimationFrame()
 	ui.Column(c).Fill().Background(ui.RGB(17, 17, 19)).Padding(72, 0, 40, 0).Children(func() {
 		ui.Spacer(c)
@@ -376,6 +386,11 @@ func (a *app) restView(c *ui.Context) {
 			})
 		})
 		ui.Spacer(c)
+		ui.Row(c).Center().Children(func() {
+			if ui.PrimaryButton(c, fmt.Sprintf("续香 %d 分钟", extendMin)).Clicked() {
+				a.extendRest(time.Now())
+			}
+		})
 		if allowSkip {
 			ui.Row(c).Center().Children(func() {
 				quit := ui.ButtonBase(c)
@@ -387,9 +402,7 @@ func (a *app) restView(c *ui.Context) {
 				}
 				quit.Border(1, border)
 				quit.Children(func() { ui.Text(c, "拂灰起行   Esc").TextColor(fg).FontSize(13) })
-				if quit.Clicked() {
-					a.skipRest()
-				}
+
 			})
 			if c.Shortcut(0, ui.KeyEscape) {
 				a.skipRest()
@@ -464,7 +477,7 @@ func main() {
 		// instead, which would cancel the quit (退出香篆 did nothing).
 		// OnBeforeQuit runs before the windows are closed: drop the veto.
 		mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.quitting.Store(true) })
-		a.window = mygo.NewWindow(mygo.WindowOptions{Title: "香篆", Width: 420, Height: 340, MinWidth: 420, MinHeight: 340, Hidden: true, StateKey: "main.v2", Content: ui.View(a.workView)})
+		a.window = mygo.NewWindow(mygo.WindowOptions{Title: "香篆", Width: 420, Height: 360, MinWidth: 420, MinHeight: 360, Hidden: true, StateKey: "main.v3", Content: ui.View(a.workView)})
 		a.window.OnClose(a.windowClose)
 		if !menuBarApp && !settingsExist(a.settingsPath) {
 			// Nothing shows that the app is running on Windows: the window
@@ -479,8 +492,7 @@ func main() {
 		// The rest screen is an overlay above the other windows, not a
 		// window of its own in the taskbar: SkipTaskbar leaves it out of
 		// the Windows taskbar, and macOS ignores it (overlay_darwin.go).
-		a.restWindow = mygo.NewWindow(mygo.WindowOptions{Title: "香篆 · 休息", Frameless: true, AlwaysOnTop: true, DisableShadow: true, SkipTaskbar: true, Hidden: true, Content: ui.View(a.restView)})
-		configureOverlay(a.restWindow.NativeHandle())
+
 		menu := trayMenu(a)
 		var err error
 		icon, template := trayIcon()

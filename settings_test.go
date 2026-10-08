@@ -12,7 +12,7 @@ func TestSettingsPersistenceAndFallback(t *testing.T) {
 	if got := loadSettings(p); got != defaultSettings() {
 		t.Fatal(got)
 	}
-	want := settings{45, 90, false}
+	want := settings{45, 90, false, 5}
 	if err := saveSettings(p, want); err != nil {
 		t.Fatal(err)
 	}
@@ -28,13 +28,13 @@ func TestSettingsPersistenceAndFallback(t *testing.T) {
 		}
 	}
 	os.WriteFile(p, []byte(`{"work_minutes":999,"rest_seconds":1}`), 0600)
-	if got := loadSettings(p); got != (settings{50, 60, true}) {
+	if got := loadSettings(p); got != (settings{50, 60, true, 5}) {
 		t.Fatal(got)
 	}
 }
 func TestSettingsDoNotInterruptCurrentRound(t *testing.T) {
 	a := &app{settings: defaultSettings(), remaining: 12 * time.Minute, workDuration: defaultWork, restDuration: defaultRest, activeRestDuration: defaultRest}
-	a.applySettings(settings{45, 90, false})
+	a.applySettings(settings{45, 90, false, 5})
 	if a.remaining != 12*time.Minute || a.activeRestDuration != defaultRest {
 		t.Fatal("current round changed")
 	}
@@ -50,7 +50,7 @@ func TestSettingsDoNotInterruptCurrentRound(t *testing.T) {
 	if a.activeRestDuration != 90*time.Second {
 		t.Fatal("next rest ignored settings")
 	}
-	a.applySettings(settings{40, 120, true})
+	a.applySettings(settings{40, 120, true, 5})
 	if a.activeRestDuration != 90*time.Second {
 		t.Fatal("active rest changed")
 	}
