@@ -32,8 +32,10 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
+      # Formatting is platform-independent, and Git for Windows checks the
+      # sources out with CRLF, which gofmt reports for every file.
       - name: Check formatting
-        shell: bash
+        if: runner.os != 'Windows'
         run: test -z "$(gofmt -l .)"
 
       - name: Vet
