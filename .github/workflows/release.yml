@@ -4,6 +4,9 @@ on:
   push:
     tags:
       - 'v*'
+  # Builds without publishing, to rehearse a release: the log shows what was
+  # staged, and whether NSIS installs for the Windows installer.
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -33,6 +36,7 @@ jobs:
           go test ./...
 
       - name: Check tag matches version
+        if: github.event_name == 'push'
         run: |
           tag="${GITHUB_REF_NAME#v}"
           version="$(jq -r .version mygo.json)"
@@ -73,8 +77,10 @@ jobs:
           else
             echo "::warning::no Windows installer: NSIS (makensis) is not installed"
           fi
+          ls -l dist
 
       - name: Publish GitHub Release
+        if: github.event_name == 'push'
         uses: softprops/action-gh-release@v3
         with:
           name: 香篆 ${{ github.ref_name }}

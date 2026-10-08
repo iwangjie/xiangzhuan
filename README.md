@@ -57,7 +57,7 @@ CGO_ENABLED=0 go tool mygo build -platform darwin/arm64,darwin/amd64,windows/amd
 # → build/darwin-arm64|darwin-amd64/香篆.app 与 DMG，build/windows-amd64/香篆.exe 与 Setup
 ```
 
-> Windows 安装包由 NSIS 生成（`brew install makensis`）；没装时只产出免安装的 exe。
+> Windows 安装包由 NSIS 生成（`brew install makensis`），且只能在 macOS／Linux 上构建：Windows 版 makensis 按 ANSI 读 NSIS 脚本，找不到 `香篆.exe`。没装 NSIS 时只产出免安装的 exe。
 
 测试与静态检查：
 
@@ -126,7 +126,7 @@ CGO_ENABLED=0 go tool mygo build -platform darwin/arm64,darwin/amd64,windows/amd
 # → build/darwin-arm64|darwin-amd64/香篆.app and its DMG, build/windows-amd64/香篆.exe and Setup
 ```
 
-> The Windows installer is built with NSIS (`brew install makensis`); without it you get the portable .exe alone.
+> The Windows installer is built with NSIS (`brew install makensis`), and only on macOS or Linux: makensis on Windows reads scripts in the ANSI codepage and cannot find `香篆.exe`. Without NSIS you get the portable .exe alone.
 
 Tests and vet:
 
