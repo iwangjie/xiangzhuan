@@ -48,7 +48,7 @@ jobs:
         continue-on-error: true
         run: brew install makensis
 
-      - name: Build the app: macOS arm64, macOS Intel and Windows
+      - name: Build the app for macOS (arm64, Intel) and Windows
         run: go tool mygo build -platform darwin/arm64,darwin/amd64,windows/amd64
 
       # GitHub strips the CJK from download file names, and the macOS app is
