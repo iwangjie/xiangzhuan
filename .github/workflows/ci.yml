@@ -9,16 +9,9 @@ env:
   CGO_ENABLED: "0"
 
 jobs:
-  verify:
-    name: ${{ matrix.name }}
-    runs-on: ${{ matrix.os }}
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          # The release builds these same targets: this is its rehearsal.
-          - { name: macOS, os: macos-15, platforms: "darwin/arm64,darwin/amd64" }
-          - { name: Windows, os: windows-latest, platforms: "windows/amd64" }
+  macos:
+    name: macOS
+    runs-on: macos-15
     steps:
       - name: Check out
         uses: actions/checkout@v7
@@ -32,10 +25,9 @@ jobs:
       - name: Download dependencies
         run: go mod download
 
-      # Formatting is platform-independent, and Git for Windows checks the
+      # Formatting is the same on every platform; Git for Windows checks the
       # sources out with CRLF, which gofmt reports for every file.
       - name: Check formatting
-        if: runner.os != 'Windows'
         run: test -z "$(gofmt -l .)"
 
       - name: Vet
@@ -44,5 +36,37 @@ jobs:
       - name: Test
         run: go test ./...
 
+      # The release builds these targets on this runner: this is its
+      # rehearsal (minus the NSIS installer, which needs makensis).
       - name: Verify native app packaging
-        run: go tool mygo build -platform "${{ matrix.platforms }}"
+        run: go tool mygo build -platform darwin/arm64,darwin/amd64,windows/amd64
+
+  windows:
+    name: Windows
+    runs-on: windows-latest
+    steps:
+      - name: Check out
+        uses: actions/checkout@v7
+
+      - name: Set up Go
+        uses: actions/setup-go@v7
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Download dependencies
+        run: go mod download
+
+      - name: Vet
+        run: go vet ./...
+
+      - name: Test
+        run: go test ./...
+
+      # Not `go tool mygo build`: its Windows installer is an NSIS script
+      # mygo writes in UTF-8, and makensis on Windows reads scripts in the
+      # ANSI codepage unless they start with a BOM, so it cannot find this
+      # app's 香篆.exe. The release packages the Windows app on macOS
+      # (above), where makensis reads UTF-8.
+      - name: Build the Windows executable
+        run: go build -o build/xiangzhuan.exe .

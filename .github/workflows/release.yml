@@ -41,9 +41,14 @@ jobs:
             exit 1
           fi
 
-      # NSIS builds the Windows installer. Its bottles lag macOS releases,
-      # where brew builds it from source instead; without it mygo build
-      # skips the installer, and the release ships the portable .exe alone.
+      # The Windows app is built here too, not on a Windows runner: its
+      # NSIS installer is a script mygo writes in UTF-8, and makensis on
+      # Windows reads scripts in the ANSI codepage unless they start with a
+      # BOM, so it cannot find this app's 香篆.exe.
+      #
+      # NSIS itself comes from brew; its bottles lag macOS releases, where
+      # brew builds it from source instead. Without it mygo build skips the
+      # installer, and the release ships the portable .exe alone.
       - name: Install NSIS, for the Windows installer
         continue-on-error: true
         run: brew install makensis
