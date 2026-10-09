@@ -63,9 +63,15 @@ type app struct {
 	updateBusy        atomic.Bool
 	updateDownloading atomic.Bool
 	quitting          atomic.Bool
-	window            *mygo.Window
-	restWindows       map[int64]*mygo.Window
-	tray              *mygo.Tray
+	// showsWindows says this process puts the rest screens on a display.
+	// run() sets it: the tests build an app that never shows anything, and
+	// a rest must not depend on the settings window, which is only built
+	// when it is opened.
+	showsWindows  bool
+	window        *mygo.Window
+	restWindows   map[int64]*mygo.Window
+	tray          *mygo.Tray
+	lastTrayTitle string
 }
 
 func (a *app) startWork() {
@@ -88,8 +94,8 @@ func (a *app) beginRest() {
 	seq := a.fadeSeq
 	a.mu.Unlock()
 	var windows []*mygo.Window
-	if a.window != nil {
-		windows = a.syncRestWindows(mygo.Screen.Displays())
+	if a.showsWindows {
+		windows = restScreens(a)
 	}
 	for _, w := range windows {
 		w.SetOpacity(0)
@@ -111,14 +117,39 @@ func (a *app) skipRest() {
 // windowClose hides the work window instead of closing it — except during a
 // quit. A quit closes every window first, and a veto there would cancel the
 // whole quit (this once made 退出香篆 do nothing).
-func (a *app) windowClose(e *mygo.CloseEvent) {
-	if a.quitting.Load() {
-		return
+// windowClose drops the settings window as it closes: it is built again the
+// next time it is opened, where mygo remembers it was, and 香篆 keeps running
+// in the tray (see OnWindowAllClosed).
+func (a *app) windowClose(*mygo.CloseEvent) {
+	a.mu.Lock()
+	a.window = nil
+	a.mu.Unlock()
+}
+
+// restScreens builds the rest screens. It is a variable so a test can watch
+// that a rest asks for them: the settings window is built only when it is
+// opened, and a rest that waited for it did nothing at all.
+var restScreens = func(a *app) []*mygo.Window {
+	return a.syncRestWindows(mygo.Screen.Displays())
+}
+
+// settingsWindow returns the settings window, building it the first time it
+// is asked for. A window the user has not opened is not worth its surface and
+// the timer the engine keeps for it, which wake a resident app several times
+// a second while it only counts down in the tray.
+func (a *app) settingsWindow() *mygo.Window {
+	a.mu.Lock()
+	w := a.window
+	a.mu.Unlock()
+	if w != nil {
+		return w
 	}
-	e.PreventDefault()
-	if a.window != nil {
-		a.window.Hide()
-	}
+	w = mygo.NewWindow(mygo.WindowOptions{Title: "香篆", Width: 420, Height: 410, MinWidth: 420, MinHeight: 410, Hidden: true, StateKey: "main.v4", Content: ui.View(a.workView)})
+	w.OnClose(a.windowClose)
+	a.mu.Lock()
+	a.window = w
+	a.mu.Unlock()
+	return w
 }
 func (a *app) hideRest() {
 	windows := a.overlayWindows()
@@ -141,6 +172,7 @@ func (a *app) hideRest() {
 			w.Hide()
 			w.SetOpacity(1)
 		}
+		a.releaseRestWindows(seq)
 	}()
 }
 
@@ -164,12 +196,39 @@ func (a *app) fadeRest(windows []*mygo.Window, to float64, steps, seq int) {
 		time.Sleep(16 * time.Millisecond)
 	}
 }
+
+// releaseRestWindows closes the overlays once they are hidden. Each holds a
+// display-sized surface (a display's worth of pixels), and a resident app has
+// no reason to keep that while it works; the next rest creates them again,
+// still at opacity 0, so the fade hides the creation.
+func (a *app) releaseRestWindows(seq int) {
+	a.mu.Lock()
+	if a.fadeSeq != seq {
+		a.mu.Unlock()
+		return
+	}
+	windows := make([]*mygo.Window, 0, len(a.restWindows))
+	for _, w := range a.restWindows {
+		windows = append(windows, w)
+	}
+	a.restWindows = nil
+	a.mu.Unlock()
+	for _, w := range windows {
+		w.Close()
+	}
+}
+
 func (a *app) invalidate() {
-	if a.window != nil {
+	// A hidden window has nothing to redraw, and asking one for a frame wakes
+	// the app and its GPU for nothing: while the app works in the background
+	// the countdown it would redraw is not on screen.
+	if a.window != nil && a.window.IsVisible() {
 		a.window.Invalidate()
 	}
 	for _, w := range a.overlayWindows() {
-		w.Invalidate()
+		if w.IsVisible() {
+			w.Invalidate()
+		}
 	}
 }
 func (a *app) advance(now time.Time) (bool, phase) {
@@ -211,7 +270,12 @@ func (a *app) tick() {
 	left, ph := a.remaining, a.phase
 	a.mu.Unlock()
 	if a.tray != nil {
-		a.tray.SetTitle(trayTitle(ph, left))
+		// setTitle: relayouts the status item and repaints the menu bar, so
+		// only ask when the text changes: once a minute while working.
+		if title := trayTitle(ph, left); title != a.lastTrayTitle {
+			a.lastTrayTitle = title
+			a.tray.SetTitle(title)
+		}
 		if !a.updateDownloading.Load() {
 			updateTrayTooltip(a.tray, ph, left)
 		}
@@ -352,15 +416,16 @@ func (a *app) restView(c *ui.Context) {
 	a.mu.Lock()
 	allowSkip := a.settings.AllowSkip
 	postponeMin := a.settings.PostponeMinutes
-	progress := a.restProgressLocked(time.Now())
 	a.mu.Unlock()
-	c.AnimationFrame()
 	ui.Column(c).Fill().Background(ui.RGB(17, 17, 19)).Padding(72, 0, 40, 0).Children(func() {
 		ui.Spacer(c)
 		ui.Column(c).Gap(12).Center().Children(func() {
 			ui.Text(c, "一篆香消，万事且抛").FontSize(22).TextColor(ui.RGB(232, 230, 225))
 			ui.Text(c, "闭目调息，神游案外").FontSize(14).TextColor(ui.RGB(136, 134, 128))
 			ui.Box(c).Size(320, 320).Draw(func(p *ui.Painter, r ui.Rect) {
+				a.mu.Lock()
+				progress := a.restProgressLocked(p.Now())
+				a.mu.Unlock()
 				base := pathFor(incensePath, 0, 1, r)
 				p.StrokePath(&base, 5, ui.RGB(34, 34, 37))
 				lit := pathFor(incensePath, progress, 1, r)
@@ -384,7 +449,9 @@ func (a *app) restView(c *ui.Context) {
 					core.Circle(x, y, 1.5*pulse)
 					p.FillPath(&core, ui.RGB(255, 194, 122))
 				}
-				p.After(16 * time.Millisecond)
+				// 30fps: the ember moves about a pixel a frame at 2x, and
+				// each repaint presents the whole screen.
+				p.After(33 * time.Millisecond)
 			})
 		})
 		ui.Spacer(c)
@@ -461,7 +528,7 @@ func trayMenu(a *app) *mygo.Menu {
 	s := a.settings
 	a.mu.Unlock()
 	return mygo.NewMenu([]*mygo.MenuItem{
-		{Label: "打开香篆", Click: func(*mygo.MenuItem, *mygo.Window) { mygo.App.Focus(); a.window.Show() }},
+		{Label: "打开香篆", Click: func(*mygo.MenuItem, *mygo.Window) { mygo.App.Focus(); a.settingsWindow().Show() }},
 		{Label: fmt.Sprintf("开始工作 %d 分钟", s.WorkMinutes), Click: func(*mygo.MenuItem, *mygo.Window) { a.startWork() }},
 		{Label: fmt.Sprintf("即刻休息 %d 秒", s.RestSeconds), Click: func(*mygo.MenuItem, *mygo.Window) { a.beginRest() }},
 		{Label: "跳过休息", Disabled: !s.AllowSkip, Click: func(*mygo.MenuItem, *mygo.Window) { a.skipRest() }},
@@ -486,6 +553,7 @@ func main() {
 	log.Print("香篆启动")
 	a := &app{workDuration: defaultWork, restDuration: defaultRest, remaining: defaultWork}
 	mygo.App.SetActivationPolicy(mygo.ActivationPolicyAccessory)
+	a.showsWindows = true
 	mygo.App.WhenReady(func() {
 		if dir, err := mygo.App.Path(mygo.PathUserData); err == nil {
 			a.settingsPath = filepath.Join(dir, "settings.json")
@@ -500,18 +568,18 @@ func main() {
 		if menuBarApp {
 			mygo.App.SetMenu(appMenuBar())
 		}
-		// A quit closes every window; this window vetoes closes to hide
-		// instead, which would cancel the quit (退出香篆 did nothing).
-		// OnBeforeQuit runs before the windows are closed: drop the veto.
+		// Closing the settings window is not quitting the app: 香篆 lives in
+		// the tray, so it stays up with no windows at all.
+		mygo.App.OnWindowAllClosed(func() {})
+		// A quit closes every window, and the countdown must not be counted
+		// as a user close while that runs.
 		mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.quitting.Store(true) })
-		a.window = mygo.NewWindow(mygo.WindowOptions{Title: "香篆", Width: 420, Height: 410, MinWidth: 420, MinHeight: 410, Hidden: true, StateKey: "main.v4", Content: ui.View(a.workView)})
-		a.window.OnClose(a.windowClose)
 		if !menuBarApp && !settingsExist(a.settingsPath) {
-			// Nothing shows that the app is running on Windows: the window
-			// is hidden and the tray icon is small. Open the window on the
-			// first launch, and record it in the settings file so that the
-			// launches after it come up quiet.
-			a.window.Show()
+			// Nothing shows that the app is running on Windows: the tray
+			// icon is small. Open the window on the first launch, and record
+			// it in the settings file so that the launches after it come up
+			// quiet.
+			a.settingsWindow().Show()
 			if err := saveSettings(a.settingsPath, a.settings); err != nil {
 				log.Printf("保存设置失败: %v", err)
 			}

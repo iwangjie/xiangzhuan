@@ -66,16 +66,20 @@ func TestMenuLabelsAreChinese(t *testing.T) {
 	}
 }
 
-// TestWorkWindowCloseHidesButNeverBlocksQuit pins the fix for a silent
-// 退出香篆: a quit closes every window first, so the work window must not
-// veto the close during a quit — but while the app runs, closing it must
-// only hide it.
-func TestWorkWindowCloseHidesButNeverBlocksQuit(t *testing.T) {
+// TestWorkWindowCloseNeverBlocksQuit pins the fix for a silent 退出香篆: a
+// quit closes every window first, so a close must never be vetoed. The
+// settings window is dropped as it closes and built again on the next open,
+// which leaves the app in the tray with no windows at all.
+func TestWorkWindowCloseNeverBlocksQuit(t *testing.T) {
 	a := &app{}
+	a.window = &mygo.Window{}
 	var e mygo.CloseEvent
 	a.windowClose(&e)
-	if !e.DefaultPrevented() {
-		t.Fatal("closing the work window while running must hide it, not close it")
+	if e.DefaultPrevented() {
+		t.Fatal("closing the settings window must not be vetoed, or 退出香篆 does nothing")
+	}
+	if a.window != nil {
+		t.Fatal("the closed settings window must be dropped, so the next open builds a fresh one")
 	}
 	a.quitting.Store(true)
 	var q mygo.CloseEvent

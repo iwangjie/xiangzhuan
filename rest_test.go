@@ -8,6 +8,28 @@ import (
 	"github.com/egoist/mygo/ui"
 )
 
+// TestRestsAskForScreensWithoutTheSettingsWindow pins the coupling that once
+// made a rest do nothing: the settings window is only built when it is
+// opened, so a rest must not wait for it.
+func TestRestsAskForScreensWithoutTheSettingsWindow(t *testing.T) {
+	asked := 0
+	previous := restScreens
+	restScreens = func(*app) []*mygo.Window {
+		asked++
+		return nil
+	}
+	defer func() { restScreens = previous }()
+
+	a := &app{settings: defaultSettings(), showsWindows: true}
+	if a.window != nil {
+		t.Fatal("this test is about a rest with no settings window built")
+	}
+	a.beginRest()
+	if asked != 1 {
+		t.Fatalf("a rest asked for its screens %d times, want 1", asked)
+	}
+}
+
 func TestPostponeRestReturnsToWork(t *testing.T) {
 	start := time.Now()
 	a := &app{phase: resting, settings: defaultSettings(), remaining: time.Minute, lastTick: start, restStart: start, activeRestDuration: time.Minute, restDuration: time.Minute}
