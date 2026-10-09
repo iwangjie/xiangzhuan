@@ -13,12 +13,13 @@ import (
 // opened, so a rest must not wait for it.
 func TestRestsAskForScreensWithoutTheSettingsWindow(t *testing.T) {
 	asked := 0
-	previous := restScreens
+	previous, previousSpawn := restScreens, spawnRestChild
 	restScreens = func(*app) []*mygo.Window {
 		asked++
 		return nil
 	}
-	defer func() { restScreens = previous }()
+	spawnRestChild = func(*app) bool { return false }
+	defer func() { restScreens, spawnRestChild = previous, previousSpawn }()
 
 	a := &app{settings: defaultSettings(), showsWindows: true}
 	if a.window != nil {

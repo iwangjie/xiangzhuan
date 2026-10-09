@@ -63,6 +63,10 @@ func (a *app) restProgressLocked(now time.Time) float32 {
 }
 
 func (a *app) postponeRest(now time.Time) {
+	if a.reportOutcome != nil {
+		a.reportOutcome(outcomePostpone)
+		return
+	}
 	a.mu.Lock()
 	if a.phase != resting {
 		a.mu.Unlock()

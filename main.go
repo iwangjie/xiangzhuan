@@ -1,12 +1,16 @@
 package main
 
 import (
+	"bufio"
 	_ "embed"
 	"fmt"
 	"log"
 	"math"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -63,6 +67,11 @@ type app struct {
 	updateBusy        atomic.Bool
 	updateDownloading atomic.Bool
 	quitting          atomic.Bool
+	// restCmd is the child that draws the rest screens, when one is up.
+	restCmd *exec.Cmd
+	// reportOutcome is set by the rest child: reporting how the rest ended
+	// replaces moving the countdown, which only the tray owns.
+	reportOutcome func(outcome string)
 	// showsWindows says this process puts the rest screens on a display.
 	// run() sets it: the tests build an app that never shows anything, and
 	// a rest must not depend on the settings window, which is only built
@@ -93,6 +102,12 @@ func (a *app) beginRest() {
 	a.fadeSeq++
 	seq := a.fadeSeq
 	a.mu.Unlock()
+	// The tray runs the process that draws the screens; that process draws
+	// them itself. (A rest child must never run another: it would fork
+	// forever.)
+	if a.showsWindows && a.reportOutcome == nil && spawnRestChild(a) {
+		return
+	}
 	var windows []*mygo.Window
 	if a.showsWindows {
 		windows = restScreens(a)
@@ -109,9 +124,14 @@ func (a *app) beginRest() {
 	a.invalidate()
 }
 func (a *app) skipRest() {
-	if a.canSkip() {
-		a.startWork()
+	if !a.canSkip() {
+		return
 	}
+	if a.reportOutcome != nil {
+		a.reportOutcome(outcomeSkip)
+		return
+	}
+	a.startWork()
 }
 
 // windowClose hides the work window instead of closing it — except during a
@@ -133,6 +153,97 @@ var restScreens = func(a *app) []*mygo.Window {
 	return a.syncRestWindows(mygo.Screen.Displays())
 }
 
+// restChildEnv marks the process the tray runs to draw the rest screens.
+const restChildEnv = "XIANGZHUAN_REST_CHILD"
+
+// spawnRestChild starts the process that draws the rest screens, and reports
+// false when it could not be started: the app then draws them itself, because
+// a rest that shows nothing is worse than one that costs memory. It is a
+// variable so a test never starts a process of its own.
+var spawnRestChild = func(a *app) bool { return a.startRestChild() }
+
+func (a *app) startRestChild() bool {
+	// Belt and braces against a child that runs children.
+	if os.Getenv(restChildEnv) != "" {
+		log.Print("rest screens: refusing to run another child")
+		return false
+	}
+	exe, err := os.Executable()
+	if err != nil {
+		log.Printf("rest screens: %v", err)
+		return false
+	}
+	a.mu.Lock()
+	settings := a.settings
+	seconds := int(a.restDuration.Seconds())
+	a.mu.Unlock()
+	cmd := exec.Command(exe, "--rest", "--seconds", strconv.Itoa(seconds),
+		"--postpone", strconv.Itoa(settings.PostponeMinutes),
+		"--skip", strconv.FormatBool(settings.AllowSkip))
+	cmd.Stderr = os.Stderr
+	cmd.Env = append(os.Environ(), restChildEnv+"=1")
+	out, err := cmd.StdoutPipe()
+	if err != nil {
+		log.Printf("rest screens: %v", err)
+		return false
+	}
+	if err := cmd.Start(); err != nil {
+		log.Printf("rest screens: %v", err)
+		return false
+	}
+	a.mu.Lock()
+	a.restCmd = cmd
+	a.mu.Unlock()
+	go func() {
+		outcome := ""
+		sc := bufio.NewScanner(out)
+		for sc.Scan() {
+			if line := strings.TrimSpace(sc.Text()); line != "" {
+				outcome = line
+			}
+		}
+		_ = cmd.Wait()
+		a.mu.Lock()
+		a.restCmd = nil
+		a.mu.Unlock()
+		a.applyRestOutcome(outcome)
+	}()
+	return true
+}
+
+// stopRestChild takes the rest screens down with the process drawing them.
+func (a *app) stopRestChild() {
+	a.mu.Lock()
+	cmd := a.restCmd
+	a.restCmd = nil
+	a.mu.Unlock()
+	if cmd == nil || cmd.Process == nil {
+		return
+	}
+	if err := cmd.Process.Kill(); err != nil {
+		log.Printf("rest screens: %v", err)
+	}
+}
+
+// applyRestOutcome moves the countdown for a rest that ended in the child:
+// the child draws the screens, the tray owns the state.
+func (a *app) applyRestOutcome(outcome string) {
+	a.mu.Lock()
+	resting := a.phase == resting
+	a.mu.Unlock()
+	if !resting {
+		return
+	}
+	switch outcome {
+	case outcomeSkip:
+		a.skipRest()
+	case outcomePostpone:
+		a.postponeRest(time.Now())
+	default:
+		a.startWork()
+	}
+}
+
 // settingsWindow returns the settings window, building it the first time it
 // is asked for. A window the user has not opened is not worth its surface and
 // the timer the engine keeps for it, which wake a resident app several times
@@ -152,6 +263,7 @@ func (a *app) settingsWindow() *mygo.Window {
 	return w
 }
 func (a *app) hideRest() {
+	a.stopRestChild()
 	windows := a.overlayWindows()
 	if len(windows) == 0 {
 		return
@@ -550,6 +662,10 @@ func main() {
 			}
 		}
 	}
+	if len(os.Args) > 1 && os.Args[1] == "--rest" {
+		runRestChild(os.Args[2:])
+		return
+	}
 	log.Print("香篆启动")
 	a := &app{workDuration: defaultWork, restDuration: defaultRest, remaining: defaultWork}
 	mygo.App.SetActivationPolicy(mygo.ActivationPolicyAccessory)
@@ -573,7 +689,10 @@ func main() {
 		mygo.App.OnWindowAllClosed(func() {})
 		// A quit closes every window, and the countdown must not be counted
 		// as a user close while that runs.
-		mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) { a.quitting.Store(true) })
+		mygo.App.OnBeforeQuit(func(*mygo.QuitEvent) {
+			a.quitting.Store(true)
+			a.stopRestChild()
+		})
 		if !menuBarApp && !settingsExist(a.settingsPath) {
 			// Nothing shows that the app is running on Windows: the tray
 			// icon is small. Open the window on the first launch, and record
