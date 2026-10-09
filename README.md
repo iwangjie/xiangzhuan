@@ -7,7 +7,7 @@
 
 驻在 macOS 菜单栏的休息提醒：工作到点，全屏燃香；一炷香尽，回到案前。
 
-![休息屏](docs/0.6.0/rest-main-display.png)
+![休息屏](docs/0.6.2/rest-main-display.png)
 
 ## 是什么
 
