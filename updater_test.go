@@ -170,6 +170,29 @@ func TestRouteName(t *testing.T) {
 	}
 }
 
+func TestUpdateChecksHangUpTheirConnection(t *testing.T) {
+	closed := make(chan struct{}, 4)
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		io.WriteString(w, "feed")
+	}))
+	server.Config.ConnState = func(c net.Conn, st http.ConnState) {
+		if st == http.StateClosed {
+			closed <- struct{}{}
+		}
+	}
+	defer server.Close()
+	defer swapProxies([]string{freeAddr(t)})()
+
+	if _, err := fetchThroughProxy(server.URL); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-closed:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the check's connection must not stay open: a resident app should not keep waking for it")
+	}
+}
+
 // fetchThroughProxy fetches url the way mygo's updater does: through
 // http.DefaultClient, treating any status but 200 as a failure.
 func fetchThroughProxy(url string) (string, error) {

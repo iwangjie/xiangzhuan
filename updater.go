@@ -72,21 +72,28 @@ func throughProxy(timeout time.Duration, fn func(ctx context.Context) error) err
 }
 
 // routeClient points what http.DefaultClient fetches — which is how mygo's
-// updater reaches GitHub — at proxy until the returned function runs. An
-// empty proxy leaves the client alone, so a direct connection still honours
-// HTTPS_PROXY from the environment. One update session runs at a time, so
-// swapping the client for the duration is safe.
+// updater reaches GitHub — at proxy until the returned function runs, and
+// hangs up what the fetch left open: a keep-alive connection would keep
+// waking a resident app for minutes after the check is done with. An empty
+// proxy leaves the client alone, so a direct connection still honours
+// HTTPS_PROXY from the environment.
 func routeClient(proxy string) func() {
 	u, err := url.Parse(proxy)
 	base, ok := http.DefaultTransport.(*http.Transport)
-	if proxy == "" || err != nil || !ok {
+	if !ok {
 		return func() {}
+	}
+	if proxy == "" || err != nil {
+		return func() { base.CloseIdleConnections() }
 	}
 	transport := base.Clone()
 	transport.Proxy = http.ProxyURL(u)
 	previous := http.DefaultClient.Transport
 	http.DefaultClient.Transport = transport
-	return func() { http.DefaultClient.Transport = previous }
+	return func() {
+		transport.CloseIdleConnections()
+		http.DefaultClient.Transport = previous
+	}
 }
 
 // routeName names a route, for the log and for what the failure dialog
