@@ -35,6 +35,10 @@ var incensePath = []point{{.18, .18}, {.82, .18}, {.82, .82}, {.18, .82}, {.18, 
 const defaultWork = 40 * time.Minute
 const defaultRest = 60 * time.Second
 
+// emberTail is how far the ember's glow trails the firehead: 1% of the 1760pt
+// path, about 18pt, roughly two fireheads of glow.
+const emberTail = 0.01
+
 // trayTagline is the tray icon's tooltip on macOS, where the countdown sits
 // next to the icon as its title instead.
 const trayTagline = "香篆 · 一篆香消，万事且抛"
@@ -366,7 +370,7 @@ func (a *app) restView(c *ui.Context) {
 					x := r.X + q.x*r.W
 					y := r.Y + q.y*r.H
 					// Faint ember tail just behind the moving firehead.
-					tailFrom := progress - 0.035
+					tailFrom := progress - emberTail
 					if tailFrom < 0 {
 						tailFrom = 0
 					}
