@@ -56,7 +56,7 @@ func TestRestViewPostponeButtonAndSkipHint(t *testing.T) {
 	start := time.Now()
 	a := &app{settings: defaultSettings(), phase: resting, remaining: time.Minute, lastTick: start, restStart: start, activeRestDuration: time.Minute}
 	tst := ui.NewTester(a.restView, 800, 600)
-	if !tst.HasText("延后 5 分钟") || !tst.HasText("拂灰起行   Esc") {
+	if !tst.HasText("延后 5 分钟") || !tst.HasText("拂灰起行") || !tst.HasText("Esc") {
 		t.Fatalf("rest screen texts missing: %v", tst.Texts())
 	}
 	if err := tst.Click("延后 5 分钟"); err != nil {
@@ -70,7 +70,7 @@ func TestRestViewPostponeButtonAndSkipHint(t *testing.T) {
 	noSkip.AllowSkip = false
 	b := &app{settings: noSkip, phase: resting, remaining: time.Minute, lastTick: start, restStart: start, activeRestDuration: time.Minute}
 	tst = ui.NewTester(b.restView, 800, 600)
-	if tst.HasText("拂灰起行   Esc") {
+	if tst.HasText("拂灰起行") || tst.HasText("Esc") {
 		t.Fatal("the skip hint must hide while skipping is off")
 	}
 	if !tst.HasText("延后 5 分钟") {

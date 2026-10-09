@@ -389,20 +389,52 @@ func (a *app) restView(c *ui.Context) {
 		})
 		ui.Spacer(c)
 		ui.Row(c).Center().Children(func() {
-			if ui.PrimaryButton(c, fmt.Sprintf("延后 %d 分钟", postponeMin)).Clicked() {
+			if postponeButton(c, fmt.Sprintf("延后 %d 分钟", postponeMin)) {
 				a.postponeRest(time.Now())
 			}
 		})
 		if allowSkip {
 			// A hint, not a button: 延后 owns the button spot now, and
 			// skipping is Esc or the tray menu.
-			ui.Row(c).Center().Margin(10, 0, 0, 0).Children(func() {
-				ui.Text(c, "拂灰起行   Esc").TextColor(ui.RGB(110, 108, 104)).FontSize(12)
+			ui.Row(c).Center().Gap(8).Margin(14, 0, 0, 0).Children(func() {
+				ui.Text(c, "拂灰起行").FontSize(12).TextColor(ui.RGB(110, 108, 104))
+				keyCap(c, "Esc")
 			})
 			if c.Shortcut(0, ui.KeyEscape) {
 				a.skipRest()
 			}
 		}
+	})
+}
+
+// postponeButton draws the rest screen's action and reports a click. The
+// theme's accent blue fights the seal's warm dark palette, so this is a
+// heated bronze plate instead: an ember panel, a copper edge and warm ink,
+// which brightens under the pointer and dims when pressed.
+func postponeButton(c *ui.Context, label string) bool {
+	b := ui.ButtonBase(c)
+	b.Padding(11, 28).Radius(9)
+	top, bottom, edge, ink := ui.RGB(40, 26, 22), ui.RGB(26, 17, 15), ui.RGB(86, 48, 36), ui.RGB(240, 198, 164)
+	switch {
+	case b.Pressed():
+		top, bottom, ink = ui.RGB(22, 15, 13), ui.RGB(20, 14, 12), ui.RGB(226, 184, 152)
+	case b.Hovered():
+		top, bottom, edge, ink = ui.RGB(58, 37, 28), ui.RGB(38, 24, 20), ui.RGB(124, 66, 46), ui.RGB(246, 210, 178)
+	}
+	b.LinearGradient(ui.LinearGradient{From: top, To: bottom, Angle: 90}).Border(1, edge)
+	b.Children(func() {
+		ui.Text(c, label).FontSize(14).TextColor(ink).SingleLine()
+	})
+	return b.Clicked()
+}
+
+// keyCap draws a shortcut the way a keyboard draws it, so the hint under the
+// button reads as a key to press rather than a link to click.
+func keyCap(c *ui.Context, key string) {
+	cap := ui.Row(c).Center().Padding(3, 7).Radius(5)
+	cap.Background(ui.RGB(28, 28, 31)).Border(1, ui.RGB(51, 49, 45))
+	cap.Children(func() {
+		ui.Text(c, key).FontSize(11).TextColor(ui.RGB(157, 154, 147)).SingleLine()
 	})
 }
 
