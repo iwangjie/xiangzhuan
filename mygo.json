@@ -1,7 +1,7 @@
 {
   "name": "香篆",
   "identifier": "com.example.xiangzhuan",
-  "version": "0.6.2",
+  "version": "0.6.3",
   "out": "build",
   "updates": {
     "publicKey": "swPKIl1lSgvReah+3ZasynSEtQR654awnSvSR91KEWg=",
