@@ -48,7 +48,14 @@ func runRestChild(args []string) {
 
 	mygo.App.SetActivationPolicy(mygo.ActivationPolicyAccessory)
 	mygo.App.OnWindowAllClosed(func() {})
-	mygo.App.WhenReady(func() { a.beginRest() })
+	var release func()
+	mygo.App.WhenReady(func() {
+		a.beginRest()
+		// A rest is watched by someone who is not touching anything, and
+		// macOS naps a process that looks idle: without an activity the
+		// repaint timer slows to a crawl and the ember stops moving.
+		release = mygo.Power.KeepAwake("rest screens", true)
+	})
 	go func() {
 		o := outcomeDone
 		select {
@@ -72,6 +79,9 @@ func runRestChild(args []string) {
 	if err := mygo.App.Run(); err != nil {
 		log.Printf("rest screens: %v", err)
 		os.Exit(1)
+	}
+	if release != nil {
+		release()
 	}
 }
 
