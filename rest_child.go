@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"log"
 	"os"
 	"time"
@@ -25,18 +26,15 @@ const (
 // The child owns the screens, not the countdown: it reports and exits, and
 // the tray moves its own state.
 func runRestChild(args []string) {
-	fs := flag.NewFlagSet("--rest", flag.ContinueOnError)
-	seconds := fs.Int("seconds", int(defaultRest.Seconds()), "how long the rest lasts")
-	postpone := fs.Int("postpone", defaultSettings().PostponeMinutes, "minutes the postpone button asks for")
-	allowSkip := fs.Bool("skip", true, "whether Esc may skip the rest")
-	if err := fs.Parse(args); err != nil {
+	flags, err := parseRestChildArgs(args)
+	if err != nil {
 		os.Exit(2)
 	}
 
 	a := &app{
-		settings:     settings{AllowSkip: *allowSkip, PostponeMinutes: *postpone},
+		settings:     settings{AllowSkip: flags.allowSkip, PostponeMinutes: flags.postpone},
 		workDuration: defaultWork,
-		restDuration: time.Duration(*seconds) * time.Second,
+		restDuration: time.Duration(flags.seconds) * time.Second,
 		phase:        resting,
 		showsWindows: true,
 	}
@@ -65,19 +63,45 @@ func runRestChild(args []string) {
 		os.Stdout.Sync()
 		mygo.App.Quit()
 	}()
-	// The screens belong to the tray: when it goes, so do they.
-	go func() {
-		parent := os.Getppid()
-		for {
-			time.Sleep(time.Second)
-			if os.Getppid() != parent {
-				mygo.App.Quit()
-				return
-			}
-		}
-	}()
+	// The screens belong to the tray: when it goes, so do they. The tray
+	// holds the other end of our stdin, so the pipe closing is the signal,
+	// which works the same on every platform (a parent's pid does not).
+	if os.Getenv(restChildEnv) != "" {
+		go watchTheTray(os.Stdin, mygo.App.Quit)
+	}
 	if err := mygo.App.Run(); err != nil {
 		log.Printf("rest screens: %v", err)
 		os.Exit(1)
 	}
+}
+
+// restChildFlags are what the tray tells the process that draws the rest
+// screens.
+type restChildFlags struct {
+	seconds   int
+	postpone  int
+	allowSkip bool
+}
+
+// parseRestChildArgs reads the flags of a rest child.
+func parseRestChildArgs(args []string) (restChildFlags, error) {
+	fs := flag.NewFlagSet("--rest", flag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	seconds := fs.Int("seconds", int(defaultRest.Seconds()), "how long the rest lasts")
+	postpone := fs.Int("postpone", defaultSettings().PostponeMinutes, "minutes the postpone button asks for")
+	allowSkip := fs.Bool("skip", true, "whether Esc may skip the rest")
+	if err := fs.Parse(args); err != nil {
+		return restChildFlags{}, err
+	}
+	if *seconds <= 0 || *postpone <= 0 {
+		return restChildFlags{}, fmt.Errorf("rest child: seconds and postpone must be positive")
+	}
+	return restChildFlags{seconds: *seconds, postpone: *postpone, allowSkip: *allowSkip}, nil
+}
+
+// watchTheTray calls leave when the tray closes its end of the pipe. It is
+// how a rest child dies with the process that put it on screen.
+func watchTheTray(tray io.Reader, leave func()) {
+	_, _ = io.Copy(io.Discard, tray)
+	leave()
 }

@@ -1,6 +1,7 @@
 package main
 
 import (
+	"os"
 	"testing"
 	"time"
 
@@ -11,6 +12,50 @@ import (
 // TestRestsAskForScreensWithoutTheSettingsWindow pins the coupling that once
 // made a rest do nothing: the settings window is only built when it is
 // opened, so a rest must not wait for it.
+func TestParseRestChildArgs(t *testing.T) {
+	flags, err := parseRestChildArgs(nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if flags.seconds != int(defaultRest.Seconds()) || flags.postpone != defaultSettings().PostponeMinutes || !flags.allowSkip {
+		t.Fatalf("defaults = %+v", flags)
+	}
+	flags, err = parseRestChildArgs([]string{"--seconds", "90", "--postpone", "3", "--skip=false"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if flags.seconds != 90 || flags.postpone != 3 || flags.allowSkip {
+		t.Fatalf("flags = %+v", flags)
+	}
+	if _, err := parseRestChildArgs([]string{"--seconds", "0"}); err == nil {
+		t.Fatal("a rest of no seconds must be refused")
+	}
+	if _, err := parseRestChildArgs([]string{"--nonsense"}); err == nil {
+		t.Fatal("an unknown flag must be refused")
+	}
+}
+
+// TestARestChildLeavesWithTheTray pins how a child that is showing rest
+// screens dies with the process that ran it: the tray holds the other end of
+// the pipe, so the close is the signal. A pid check would not work on
+// Windows, where a dead parent's pid stays readable.
+func TestARestChildLeavesWithTheTray(t *testing.T) {
+	tray, child := pipeForTest(t)
+	left := make(chan struct{})
+	go watchTheTray(child, func() { close(left) })
+	select {
+	case <-left:
+		t.Fatal("the child must stay while the tray holds the pipe")
+	case <-time.After(100 * time.Millisecond):
+	}
+	tray.Close()
+	select {
+	case <-left:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the child must leave when the tray closes its end")
+	}
+}
+
 func TestRestsAskForScreensWithoutTheSettingsWindow(t *testing.T) {
 	asked := 0
 	previous, previousSpawn := restScreens, spawnRestChild
@@ -99,4 +144,16 @@ func TestRestViewPostponeButtonAndSkipHint(t *testing.T) {
 	if !tst.HasText("延后 5 分钟") {
 		t.Fatal("延后 must stay available without skipping")
 	}
+}
+
+// pipeForTest is a pipe pair: the tray keeps the first end, the child reads
+// the second.
+func pipeForTest(t *testing.T) (*os.File, *os.File) {
+	t.Helper()
+	child, tray, err := os.Pipe() // the read end goes to the child, this keeps the write end
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { child.Close() })
+	return tray, child
 }

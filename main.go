@@ -67,8 +67,11 @@ type app struct {
 	updateBusy        atomic.Bool
 	updateDownloading atomic.Bool
 	quitting          atomic.Bool
-	// restCmd is the child that draws the rest screens, when one is up.
-	restCmd *exec.Cmd
+	// restCmd is the child that draws the rest screens, when one is up, and
+	// trayPipe is the end of its stdin that keeps it alive: the child leaves
+	// when this end closes, which happens when this process goes.
+	restCmd  *exec.Cmd
+	trayPipe *os.File
 	// reportOutcome is set by the rest child: reporting how the rest ended
 	// replaces moving the countdown, which only the tray owns.
 	reportOutcome func(outcome string)
@@ -182,15 +185,30 @@ func (a *app) startRestChild() bool {
 		"--skip", strconv.FormatBool(settings.AllowSkip))
 	cmd.Stderr = os.Stderr
 	cmd.Env = append(os.Environ(), restChildEnv+"=1")
+	cmd.SysProcAttr = childSysProcAttr()
 	out, err := cmd.StdoutPipe()
 	if err != nil {
 		log.Printf("rest screens: %v", err)
 		return false
 	}
-	if err := cmd.Start(); err != nil {
+	// The child watches this pipe: closing it (which happens when this
+	// process goes) takes the screens down with us.
+	tray, keepTray, err := os.Pipe()
+	if err != nil {
 		log.Printf("rest screens: %v", err)
 		return false
 	}
+	cmd.Stdin = tray
+	if err := cmd.Start(); err != nil {
+		log.Printf("rest screens: %v", err)
+		tray.Close()
+		keepTray.Close()
+		return false
+	}
+	tray.Close()
+	a.mu.Lock()
+	a.trayPipe = keepTray
+	a.mu.Unlock()
 	a.mu.Lock()
 	a.restCmd = cmd
 	a.mu.Unlock()
@@ -205,7 +223,12 @@ func (a *app) startRestChild() bool {
 		_ = cmd.Wait()
 		a.mu.Lock()
 		a.restCmd = nil
+		pipe := a.trayPipe
+		a.trayPipe = nil
 		a.mu.Unlock()
+		if pipe != nil {
+			_ = pipe.Close()
+		}
 		a.applyRestOutcome(outcome)
 	}()
 	return true
@@ -216,7 +239,14 @@ func (a *app) stopRestChild() {
 	a.mu.Lock()
 	cmd := a.restCmd
 	a.restCmd = nil
+	pipe := a.trayPipe
+	a.trayPipe = nil
 	a.mu.Unlock()
+	if pipe != nil {
+		// The child watches this end: closing it is what tells a child that
+		// outlived its welcome to leave.
+		_ = pipe.Close()
+	}
 	if cmd == nil || cmd.Process == nil {
 		return
 	}
