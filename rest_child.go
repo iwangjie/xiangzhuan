@@ -56,6 +56,17 @@ func runRestChild(args []string) {
 		// repaint timer slows to a crawl and the ember stops moving.
 		release = mygo.Power.KeepAwake("rest screens", true)
 	})
+	// The screens ask for a frame themselves instead of relying on the
+	// painter's own chain: an input event (a mouse moving over the screens)
+	// rebuilds the host's frame and drops that chain, which froze the ember
+	// until the next event. A frame every 33ms cannot be dropped.
+	go func() {
+		for range time.Tick(33 * time.Millisecond) {
+			for _, w := range a.overlayWindows() {
+				w.Invalidate()
+			}
+		}
+	}()
 	go func() {
 		o := outcomeDone
 		select {
