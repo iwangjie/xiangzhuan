@@ -12,6 +12,42 @@ import (
 // TestRestsAskForScreensWithoutTheSettingsWindow pins the coupling that once
 // made a rest do nothing: the settings window is only built when it is
 // opened, so a rest must not wait for it.
+// TestARestChildNeverRunsAnother pins the guard against the fork bomb the
+// first cut of this had: a rest child ran another, which ran another, until
+// the chain was killed.
+func TestARestChildNeverRunsAnother(t *testing.T) {
+	t.Setenv(restChildEnv, "1")
+	if spawnRestChild(&app{}) {
+		t.Fatal("a rest child must not run another child")
+	}
+}
+
+// TestTheDrawerDrawsInsteadOfRunningAChild pins the other half of that
+// guard: the process that has a restOutcome is the one drawing the screens.
+func TestTheDrawerDrawsInsteadOfRunningAChild(t *testing.T) {
+	previousSpawn, previousScreens := spawnRestChild, restScreens
+	defer func() { spawnRestChild, restScreens = previousSpawn, previousScreens }()
+
+	spawned, drew := false, false
+	spawnRestChild = func(*app) bool {
+		spawned = true
+		return true
+	}
+	restScreens = func(*app) []*mygo.Window {
+		drew = true
+		return nil
+	}
+
+	a := &app{settings: defaultSettings(), showsWindows: true, reportOutcome: func(string) {}}
+	a.beginRest()
+	if spawned {
+		t.Fatal("the drawer must not run a child of its own")
+	}
+	if !drew {
+		t.Fatal("the drawer must draw the screens itself")
+	}
+}
+
 func TestParseRestChildArgs(t *testing.T) {
 	flags, err := parseRestChildArgs(nil)
 	if err != nil {
