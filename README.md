@@ -21,6 +21,7 @@
 - 多屏同步：休息屏覆盖全部显示器，同进同出
 - 「延后 N 分钟」：收起休息屏，临时再工作 N 分钟，到点重新开始完整休息；不受「允许跳过」开关影响
 - 「允许跳过休息」可关：关掉后休息屏不出现跳过通道，`Esc` 也失效，真正独占禅定
+- 强制休息：连续延后 3 次，或跳过 1 次，下一次休息即为强制休息，休息屏会给出提示，并且不再提供延后、`Esc`、托盘「跳过休息」与「开始工作」等任何提前结束的方式；完整休息一次后计数清零
 - 菜单栏篆印图标 + 剩余分钟读数（最后一分钟显示秒，休息时显示「休」）
 - 全屏覆盖层休息屏：淡入淡出、零黑帧、滑动切不走
 - 全中文界面；退出干净
@@ -94,6 +95,7 @@ Native UI ([MyGo](https://github.com/egoist/mygo) native, no webview): no networ
 - Multi-display: the rest screen covers every display and fades in and out together
 - "Postpone by N minutes": hides the rest screens and starts a temporary N-minute work countdown, followed by a full rest; available even when skipping is disabled
 - "Allow skipping" can be turned off: no skip route, `Esc` disabled — a true full-screen retreat
+- Forced rest: after 3 postponements or 1 skip, the next rest is forced. The rest screen says so and offers no way out: no postpone, no `Esc`, no tray "Skip rest" or "Start work". Finishing a rest in full resets the counts
 - Menu bar seal icon with minutes left (seconds in the last minute; 休 during rest)
 - Full-screen overlay rest screen: fades in and out, no black frames, cannot be swiped away
 - Chinese UI throughout; quits cleanly

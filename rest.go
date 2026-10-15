@@ -63,15 +63,17 @@ func (a *app) restProgressLocked(now time.Time) float32 {
 }
 
 func (a *app) postponeRest(now time.Time) {
-	if a.reportOutcome != nil {
-		a.reportOutcome(outcomePostpone)
-		return
-	}
 	a.mu.Lock()
-	if a.phase != resting {
+	if a.phase != resting || a.forcedReason != "" {
 		a.mu.Unlock()
 		return
 	}
+	if a.reportOutcome != nil {
+		a.mu.Unlock()
+		a.reportOutcome(outcomePostpone)
+		return
+	}
+	a.postponeCount++
 	a.phase = working
 	duration := time.Duration(a.settings.PostponeMinutes) * time.Minute
 	a.remaining = duration

@@ -39,6 +39,19 @@ var incensePath = []point{{.18, .18}, {.82, .18}, {.82, .82}, {.18, .82}, {.18, 
 const defaultWork = 40 * time.Minute
 const defaultRest = 60 * time.Second
 
+// A rest that was put off this many times is followed by one that cannot be:
+// postponing three times, or skipping once, forces the next rest.
+const (
+	maxPostpones = 3
+	maxSkips     = 1
+)
+
+// Why a rest is forced. The text is what the rest screen tells the person.
+const (
+	forcedByPostpone = "已连续延后 3 次，这一次必须休息，无法延后或跳过"
+	forcedBySkip     = "已跳过 1 次，这一次必须休息，无法延后或跳过"
+)
+
 // emberTail is how far the ember's glow trails the firehead: 1% of the 1760pt
 // path, about 18pt, roughly two fireheads of glow.
 const emberTail = 0.01
@@ -61,6 +74,13 @@ type app struct {
 	// matches the newest stops, so a skip then a new rest cannot fight
 	// over the window.
 	fadeSeq int
+	// postponeCount and skipCount are how many times the rests since the
+	// last one that ran to its end were put off; reaching a limit makes the
+	// next rest forced. forcedReason is why the current rest is forced
+	// (empty when it is not): such a rest offers no way out.
+	postponeCount int
+	skipCount     int
+	forcedReason  string
 	// quitting turns true when a quit begins: the work window's close
 	// handler vetoes closes to hide the window instead, and that veto
 	// must not cancel the quit itself.
@@ -95,8 +115,43 @@ func (a *app) startWork() {
 	a.hideRest()
 	a.invalidate()
 }
+
+// finishRest ends a rest that ran its whole length: the limits start over.
+func (a *app) finishRest() {
+	a.mu.Lock()
+	a.postponeCount, a.skipCount, a.forcedReason = 0, 0, ""
+	a.mu.Unlock()
+	a.startWork()
+}
+
+// userStartWork is the start-work command (tray menu, 重新起香). During a rest
+// it is a way out like any other, so it goes through the skip rules.
+func (a *app) userStartWork() {
+	a.mu.Lock()
+	inRest := a.phase == resting
+	a.mu.Unlock()
+	if inRest {
+		a.skipRest()
+		return
+	}
+	a.startWork()
+}
+
+// forcedReasonLocked says why the next rest has no way out: the reason of
+// the limit that was reached, or "" while both still have room.
+func (a *app) forcedReasonLocked() string {
+	switch {
+	case a.skipCount >= maxSkips:
+		return forcedBySkip
+	case a.postponeCount >= maxPostpones:
+		return forcedByPostpone
+	}
+	return ""
+}
+
 func (a *app) beginRest() {
 	a.mu.Lock()
+	a.forcedReason = a.forcedReasonLocked()
 	a.phase = resting
 	a.remaining = a.restDuration
 	a.lastTick = time.Now()
@@ -127,13 +182,23 @@ func (a *app) beginRest() {
 	a.invalidate()
 }
 func (a *app) skipRest() {
-	if !a.canSkip() {
+	a.mu.Lock()
+	allowed := a.settings.AllowSkip && a.forcedReason == ""
+	a.mu.Unlock()
+	if !allowed {
 		return
 	}
 	if a.reportOutcome != nil {
 		a.reportOutcome(outcomeSkip)
 		return
 	}
+	a.mu.Lock()
+	if a.phase != resting {
+		a.mu.Unlock()
+		return
+	}
+	a.skipCount++
+	a.mu.Unlock()
 	a.startWork()
 }
 
@@ -179,10 +244,13 @@ func (a *app) startRestChild() bool {
 	a.mu.Lock()
 	settings := a.settings
 	seconds := int(a.restDuration.Seconds())
+	postponed, skipped := a.postponeCount, a.skipCount
 	a.mu.Unlock()
 	cmd := exec.Command(exe, "--rest", "--seconds", strconv.Itoa(seconds),
 		"--postpone", strconv.Itoa(settings.PostponeMinutes),
-		"--skip", strconv.FormatBool(settings.AllowSkip))
+		"--skip", strconv.FormatBool(settings.AllowSkip),
+		"--postponed", strconv.Itoa(postponed),
+		"--skipped", strconv.Itoa(skipped))
 	cmd.Stderr = os.Stderr
 	cmd.Env = append(os.Environ(), restChildEnv+"=1")
 	cmd.SysProcAttr = childSysProcAttr()
@@ -269,7 +337,11 @@ func (a *app) applyRestOutcome(outcome string) {
 		a.skipRest()
 	case outcomePostpone:
 		a.postponeRest(time.Now())
+	case outcomeDone:
+		a.finishRest()
 	default:
+		// The child went without saying how: that is not a rest that
+		// ran its length, so the limits stay as they were.
 		a.startWork()
 	}
 }
@@ -404,7 +476,7 @@ func (a *app) tick() {
 		if old == working {
 			a.beginRest()
 		} else {
-			a.startWork()
+			a.finishRest()
 		}
 		return
 	}
@@ -495,7 +567,7 @@ func (a *app) workView(c *ui.Context) {
 			a.applySettings(updated)
 		}
 		if ui.PrimaryButton(c, "重新起香").Width(130).Clicked() {
-			a.startWork()
+			a.userStartWork()
 		}
 	})
 }
@@ -558,6 +630,7 @@ func (a *app) restView(c *ui.Context) {
 	a.mu.Lock()
 	allowSkip := a.settings.AllowSkip
 	postponeMin := a.settings.PostponeMinutes
+	forced := a.forcedReason
 	a.mu.Unlock()
 	ui.Column(c).Fill().Background(ui.RGB(17, 17, 19)).Padding(72, 0, 40, 0).Children(func() {
 		ui.Spacer(c)
@@ -597,6 +670,12 @@ func (a *app) restView(c *ui.Context) {
 			})
 		})
 		ui.Spacer(c)
+		if forced != "" {
+			ui.Row(c).Center().Children(func() {
+				ui.Text(c, forced).FontSize(14).TextColor(ui.RGB(240, 198, 164)).SingleLine()
+			})
+			return
+		}
 		ui.Row(c).Center().Children(func() {
 			if postponeButton(c, fmt.Sprintf("延后 %d 分钟", postponeMin)) {
 				a.postponeRest(time.Now())
@@ -671,7 +750,7 @@ func trayMenu(a *app) *mygo.Menu {
 	a.mu.Unlock()
 	return mygo.NewMenu([]*mygo.MenuItem{
 		{Label: "打开香篆", Click: func(*mygo.MenuItem, *mygo.Window) { mygo.App.Focus(); a.settingsWindow().Show() }},
-		{Label: fmt.Sprintf("开始工作 %d 分钟", s.WorkMinutes), Click: func(*mygo.MenuItem, *mygo.Window) { a.startWork() }},
+		{Label: fmt.Sprintf("开始工作 %d 分钟", s.WorkMinutes), Click: func(*mygo.MenuItem, *mygo.Window) { a.userStartWork() }},
 		{Label: fmt.Sprintf("即刻休息 %d 秒", s.RestSeconds), Click: func(*mygo.MenuItem, *mygo.Window) { a.beginRest() }},
 		{Label: "跳过休息", Disabled: !s.AllowSkip, Click: func(*mygo.MenuItem, *mygo.Window) { a.skipRest() }},
 		{Label: "检查更新…", Click: func(*mygo.MenuItem, *mygo.Window) { go a.checkUpdates(true) }},

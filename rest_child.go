@@ -32,11 +32,13 @@ func runRestChild(args []string) {
 	}
 
 	a := &app{
-		settings:     settings{AllowSkip: flags.allowSkip, PostponeMinutes: flags.postpone},
-		workDuration: defaultWork,
-		restDuration: time.Duration(flags.seconds) * time.Second,
-		phase:        resting,
-		showsWindows: true,
+		settings:      settings{AllowSkip: flags.allowSkip, PostponeMinutes: flags.postpone},
+		workDuration:  defaultWork,
+		restDuration:  time.Duration(flags.seconds) * time.Second,
+		phase:         resting,
+		showsWindows:  true,
+		postponeCount: flags.postponed,
+		skipCount:     flags.skipped,
 	}
 	outcome := make(chan string, 1)
 	a.reportOutcome = func(o string) {
@@ -102,6 +104,8 @@ type restChildFlags struct {
 	seconds   int
 	postpone  int
 	allowSkip bool
+	postponed int
+	skipped   int
 }
 
 // parseRestChildArgs reads the flags of a rest child.
@@ -111,13 +115,15 @@ func parseRestChildArgs(args []string) (restChildFlags, error) {
 	seconds := fs.Int("seconds", int(defaultRest.Seconds()), "how long the rest lasts")
 	postpone := fs.Int("postpone", defaultSettings().PostponeMinutes, "minutes the postpone button asks for")
 	allowSkip := fs.Bool("skip", true, "whether Esc may skip the rest")
+	postponed := fs.Int("postponed", 0, "rests postponed since the last full one")
+	skipped := fs.Int("skipped", 0, "rests skipped since the last full one")
 	if err := fs.Parse(args); err != nil {
 		return restChildFlags{}, err
 	}
-	if *seconds <= 0 || *postpone <= 0 {
+	if *seconds <= 0 || *postpone <= 0 || *postponed < 0 || *skipped < 0 {
 		return restChildFlags{}, fmt.Errorf("rest child: seconds and postpone must be positive")
 	}
-	return restChildFlags{seconds: *seconds, postpone: *postpone, allowSkip: *allowSkip}, nil
+	return restChildFlags{seconds: *seconds, postpone: *postpone, allowSkip: *allowSkip, postponed: *postponed, skipped: *skipped}, nil
 }
 
 // watchTheTray calls leave when the tray closes its end of the pipe. It is
