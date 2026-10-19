@@ -70,6 +70,10 @@ type app struct {
 	activeRestDuration         time.Duration
 	settings                   settings
 	settingsPath               string
+	// setLoginItem makes the system start the app when the user logs in.
+	// main sets it; a nil value (tests, the rest child) leaves the machine
+	// alone.
+	setLoginItem func(bool) error
 	// fadeSeq numbers the rest window's fades; a fade that no longer
 	// matches the newest stops, so a skip then a new rest cannot fight
 	// over the window.
@@ -357,7 +361,7 @@ func (a *app) settingsWindow() *mygo.Window {
 	if w != nil {
 		return w
 	}
-	w = mygo.NewWindow(mygo.WindowOptions{Title: "香篆", Width: 420, Height: 410, MinWidth: 420, MinHeight: 410, Hidden: true, StateKey: "main.v4", Content: ui.View(a.workView)})
+	w = mygo.NewWindow(mygo.WindowOptions{Title: "香篆", Width: 420, Height: 440, MinWidth: 420, MinHeight: 440, Hidden: true, StateKey: "main.v4", Content: ui.View(a.workView)})
 	w.OnClose(a.windowClose)
 	a.mu.Lock()
 	a.window = w
@@ -535,6 +539,7 @@ func (a *app) workView(c *ui.Context) {
 	s := a.settings
 	a.mu.Unlock()
 	workMin, restSec, postponeMin, allowSkip := float64(s.WorkMinutes), float64(s.RestSeconds), float64(s.PostponeMinutes), s.AllowSkip
+	openAtLogin := s.OpenAtLogin
 	ui.Column(c).Fill().Center().Gap(16).Padding(24, 28).Children(func() {
 		ui.Column(c).Center().Gap(4).Children(func() {
 			ui.Text(c, "香篆").FontSize(24).Bold()
@@ -561,8 +566,15 @@ func (a *app) workView(c *ui.Context) {
 				ui.Text(c, "分钟").FontSize(12).TextColor(c.Theme().TextMuted).Width(28)
 			})
 			ui.Checkbox(c, &allowSkip, "允许跳过休息").FontSize(13)
+			ui.Checkbox(c, &openAtLogin, "登录时自动启动").FontSize(13)
 		})
-		updated := settings{int(workMin), int(restSec), allowSkip, int(postponeMin)}
+		updated := settings{
+			WorkMinutes:     int(workMin),
+			RestSeconds:     int(restSec),
+			AllowSkip:       allowSkip,
+			PostponeMinutes: int(postponeMin),
+			OpenAtLogin:     openAtLogin,
+		}
 		if updated != s {
 			a.applySettings(updated)
 		}
@@ -776,17 +788,19 @@ func main() {
 		return
 	}
 	log.Print("香篆启动")
-	a := &app{workDuration: defaultWork, restDuration: defaultRest, remaining: defaultWork}
+	a := &app{workDuration: defaultWork, restDuration: defaultRest, remaining: defaultWork, setLoginItem: mygo.App.SetOpenAtLogin}
 	mygo.App.SetActivationPolicy(mygo.ActivationPolicyAccessory)
 	a.showsWindows = true
 	mygo.App.WhenReady(func() {
 		if dir, err := mygo.App.Path(mygo.PathUserData); err == nil {
 			a.settingsPath = filepath.Join(dir, "settings.json")
 		}
-		a.settings = loadSettings(a.settingsPath)
+		var loginStored bool
+		a.settings, loginStored = readSettings(a.settingsPath)
 		a.workDuration = time.Duration(a.settings.WorkMinutes) * time.Minute
 		a.restDuration = time.Duration(a.settings.RestSeconds) * time.Second
 		a.remaining = a.workDuration
+		a.startupOpenAtLogin(loginStored)
 		// macOS shows this menu bar beside the app's windows; Windows would
 		// put it inside the settings window, where its macOS roles (关于香篆、
 		// 隐藏其他、全部显示) do nothing. 退出香篆 is in the tray menu there.

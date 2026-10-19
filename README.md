@@ -21,6 +21,7 @@
 - 多屏同步：休息屏覆盖全部显示器，同进同出
 - 「延后 N 分钟」：收起休息屏，临时再工作 N 分钟，到点重新开始完整休息；不受「允许跳过」开关影响
 - 「允许跳过休息」可关：关掉后休息屏不出现跳过通道，`Esc` 也失效，真正独占禅定
+- 「登录时自动启动」默认开启：登录系统后直接驻进菜单栏，可在主窗口关闭
 - 强制休息：连续延后 3 次，或跳过 1 次，下一次休息即为强制休息，休息屏会给出提示，并且不再提供延后、`Esc`、托盘「跳过休息」与「开始工作」等任何提前结束的方式；完整休息一次后计数清零
 - 菜单栏篆印图标 + 剩余分钟读数（最后一分钟显示秒，休息时显示「休」）
 - 全屏覆盖层休息屏：淡入淡出、零黑帧、滑动切不走
@@ -44,7 +45,7 @@ xattr -d com.apple.quarantine /Applications/香篆.app
 
 - 点菜单栏篆印图标：打开香篆 / 开始工作（按设置的分钟数）/ 即刻休息（按设置的秒数）/ 跳过休息 / 退出香篆
 - Windows：右键点通知区图标打开同一份菜单
-- 主窗口里调整工作时长、休息时长、延后时长与是否允许跳过，改动即时保存
+- 主窗口里调整工作时长、休息时长、延后时长、是否允许跳过与登录时自动启动，改动即时保存
 - 休息中点「延后 N 分钟」先处理急事，倒计时结束后重新休息；按 `Esc` 提前结束（须允许跳过）
 
 ![设置界面](docs/0.5.0/settings-window.png)
@@ -95,6 +96,7 @@ Native UI ([MyGo](https://github.com/egoist/mygo) native, no webview): no networ
 - Multi-display: the rest screen covers every display and fades in and out together
 - "Postpone by N minutes": hides the rest screens and starts a temporary N-minute work countdown, followed by a full rest; available even when skipping is disabled
 - "Allow skipping" can be turned off: no skip route, `Esc` disabled — a true full-screen retreat
+- "Start at login" is on by default: the app comes up in the menu bar after you log in, and can be turned off in the main window
 - Forced rest: after 3 postponements or 1 skip, the next rest is forced. The rest screen says so and offers no way out: no postpone, no `Esc`, no tray "Skip rest" or "Start work". Finishing a rest in full resets the counts
 - Menu bar seal icon with minutes left (seconds in the last minute; 休 during rest)
 - Full-screen overlay rest screen: fades in and out, no black frames, cannot be swiped away
@@ -118,7 +120,7 @@ xattr -d com.apple.quarantine /Applications/香篆.app
 
 - Click the menu bar icon: Open / Start work (your minutes) / Rest now (your seconds) / Skip rest / Quit
 - Windows: right-click the notification area icon for the same menu
-- Adjust work length, rest length, postponement length and the skip permission in the main window; saved instantly
+- Adjust work length, rest length, postponement length, skip permission and start at login in the main window; saved instantly
 - During a rest, click 延后 (postpone) to work for N more minutes before a fresh rest, or press `Esc` for an early end (when skipping is allowed)
 
 ## Build from source
