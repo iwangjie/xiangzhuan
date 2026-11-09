@@ -7,6 +7,7 @@ import {
   canSkipNow,
   formatClock,
   loadSettings,
+  paused,
   phase,
   phaseLabel,
   postponeRest,
@@ -21,6 +22,7 @@ import {
   startRest,
   stopCycle,
   tick,
+  togglePause,
   updateSettings,
 } from "./state";
 
@@ -63,6 +65,11 @@ function trayMenu(): (MenuItem | false)[] {
       p === "idle"
         ? { label: "开始专注", shortcut: "mod+shift+s", onSelect: startFocus }
         : { label: "立即休息", shortcut: "mod+shift+r", onSelect: () => startRest(false) },
+      p === "focus" && {
+        label: paused() ? "继续专注" : "暂停专注",
+        shortcut: "mod+shift+p",
+        onSelect: togglePause,
+      },
       p === "idle" && { label: "直接休息", onSelect: () => startRest(false) },
       p !== "idle" && { label: "结束本轮", onSelect: stopCycle },
     );
@@ -100,6 +107,7 @@ function appMenu(): (MenuItem | false)[] {
         { type: "separator" },
         { label: "显示香篆", shortcut: "mod+0", onSelect: showApp },
         { label: "开始专注", shortcut: "mod+shift+s", onSelect: startFocus },
+        { label: "暂停 / 继续专注", shortcut: "mod+shift+p", onSelect: togglePause },
         { label: "立即休息", shortcut: "mod+shift+r", onSelect: () => startRest(false) },
         { type: "separator" },
         { role: "hide", label: "隐藏香篆" },
@@ -149,7 +157,21 @@ export function Shell() {
     Menu.setApplicationMenu(appMenu());
   });
 
-  keymap.bind("mod+shift+s", () => startFocus());
+  // 启动即进入专注；用菜单/快捷键暂停，而不是要求用户手动开始。
+  let autoStarted = false;
+  effect(() => {
+    if (autoStarted || !settingsLoaded()) return;
+    if (phase() !== "idle") return;
+    autoStarted = true;
+    startFocus();
+  });
+
+  keymap.bind("mod+shift+s", () => {
+    if (phase() === "idle") startFocus();
+  });
+  keymap.bind("mod+shift+p", () => {
+    if (phase() === "focus") togglePause();
+  });
   keymap.bind("mod+shift+r", () => startRest(false));
   keymap.bind(
     "escape",

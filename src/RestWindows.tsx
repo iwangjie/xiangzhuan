@@ -1,9 +1,11 @@
-import { effect, View, WebView, type WebViewRef } from "nsh";
+import { effect, signal, View, WebView, type WebViewRef } from "nsh";
 import { displays, Window, type Display } from "nsh/desktop";
 import {
   canPostponeNow,
   canSkipNow,
+  finishOutro,
   now,
+  phase,
   phaseLine,
   postponeRest,
   restEnd,
@@ -14,26 +16,38 @@ import {
 } from "./state";
 import { SHRINE_HTML } from "./shrine-html";
 
+// The shrine WebView is heavy (procedural textures and shaders), so load it
+// once, hidden, shortly after launch; a rest then only shows it. This keeps
+// the main window → rest transition smooth even on slow machines.
+const prewarmed = signal(false);
+setTimeout(() => prewarmed.set(true), 1400);
+
+function showRestWindow(win: NonNullable<ReturnType<typeof Window.get>>, display: Display): void {
+  const bounds = display.bounds;
+  win.setBounds({
+    origin: { x: bounds.origin.x, y: bounds.origin.y },
+    size: { width: bounds.size.width, height: bounds.size.height },
+    animated: false,
+  });
+  win.show();
+  win.focus();
+}
+
 export function RestWindows() {
   return (
     <Each of={displays()} key={(display: Display) => display.id}>
       {(display) => (
         <Window
           id={`rest:${display().id}`}
-          open={restOpen()}
+          open={prewarmed()}
           ref={(win) => {
-            const bounds = display().bounds;
-            win.setBounds({
-              origin: { x: bounds.origin.x, y: bounds.origin.y },
-              size: { width: bounds.size.width, height: bounds.size.height },
-              animated: false,
-            });
-            win.focus();
+            win.hide();
+            if (restOpen()) showRestWindow(win, display());
           }}
           title="香篆 · 休息"
           frame="none"
-          defaultPosition={{ x: display().bounds.origin.x, y: display().bounds.origin.y }}
-          defaultSize={{ width: display().bounds.size.width, height: display().bounds.size.height }}
+          defaultPosition={{ x: -12000, y: -12000 }}
+          defaultSize={{ width: 1, height: 1 }}
           level="aboveDock"
           workspaces="all"
           resizable={false}
@@ -74,6 +88,7 @@ function RestScreen(props: { display: Display }) {
         canPostpone: canPostponeNow(),
         canSkip: canSkipNow(),
         forced: restForced(),
+        active: phase() === "rest",
         label: phaseLine(),
         display: props.display.name,
       }),
@@ -81,11 +96,22 @@ function RestScreen(props: { display: Display }) {
   };
 
   effect(() => {
+    // The rest window is prewarmed hidden; showing it is a resize + show, not
+    // a page load.
+    const open = restOpen();
+    const win = Window.get(`rest:${props.display.id}`);
+    if (!win) return;
+    if (open) showRestWindow(win, props.display);
+    else win.hide();
+  });
+
+  effect(() => {
     // Track every field the page shows; the 250 ms tick republishes it.
     restLeft();
     canPostponeNow();
     canSkipNow();
     restForced();
+    phase();
     phaseLine();
     post();
   });
@@ -113,6 +139,9 @@ function RestScreen(props: { display: Display }) {
               break;
             case "postpone":
               postponeRest();
+              break;
+            case "done":
+              finishOutro();
               break;
             default:
               // View switches stay inside the page.

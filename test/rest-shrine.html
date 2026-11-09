@@ -6,11 +6,11 @@
 <title>香篆 · 茶席静坐</title>
 <style>
   :root {
-    --c-paper: #e6dfd3;
-    --c-muted: rgba(230, 223, 211, 0.56);
-    --c-faint: rgba(230, 223, 211, 0.16);
+    --c-paper: #e8e1d5;
+    --c-muted: rgba(232, 225, 213, 0.58);
+    --c-faint: rgba(232, 225, 213, 0.15);
     --c-seal: #9b291e;
-    --c-gold: #cba15c;
+    --c-gold: #c9a05b;
     --font-serif: "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC", "Kaiti SC", "STKaiti", serif;
     --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
   }
@@ -28,7 +28,7 @@
     width: 100%;
     height: 100%;
     overflow: hidden;
-    background-color: #0d0b09;
+    background-color: #0b0907;
     color: var(--c-paper);
     font-family: var(--font-serif);
   }
@@ -43,15 +43,15 @@
     cursor: grabbing;
   }
 
-  /* 电影级光学暗角与上下柔化衬底，确保纸墨文字在任何亮窗背景下清晰可读 */
+  /* 电影级光学暗角与上下柔化衬底，确保宣纸墨色文字在亮窗背景下清晰可读 */
   #vignette {
     position: fixed;
     inset: 0;
     z-index: 2;
     pointer-events: none;
     background:
-      radial-gradient(ellipse at 52% 48%, rgba(12, 10, 8, 0) 48%, rgba(10, 8, 6, 0.36) 80%, rgba(6, 5, 4, 0.78) 100%),
-      linear-gradient(to bottom, rgba(8, 7, 6, 0.62) 0%, rgba(8, 7, 6, 0.16) 14%, rgba(8, 7, 6, 0) 30%, rgba(8, 7, 6, 0) 74%, rgba(7, 6, 5, 0.78) 100%);
+      radial-gradient(ellipse at 52% 48%, rgba(10, 8, 6, 0) 46%, rgba(9, 7, 5, 0.38) 78%, rgba(5, 4, 3, 0.82) 100%),
+      linear-gradient(to bottom, rgba(7, 6, 5, 0.65) 0%, rgba(7, 6, 5, 0.16) 15%, rgba(7, 6, 5, 0) 32%, rgba(7, 6, 5, 0) 72%, rgba(6, 5, 4, 0.82) 100%);
   }
 
   /* 微妙胶片颗粒质感层 */
@@ -60,26 +60,81 @@
     inset: 0;
     z-index: 3;
     pointer-events: none;
-    opacity: 0.032;
+    opacity: 0.030;
     mix-blend-mode: overlay;
     background-size: 160px 160px;
   }
 
-  /* 开场黑场淡入 */
+  /* 开场与收尾黑场过渡 */
   #curtain {
     position: fixed;
     inset: 0;
     z-index: 20;
-    background: #090806;
+    background: #080705;
     pointer-events: none;
     opacity: 1;
-    transition: opacity 1.35s cubic-bezier(0.22, 1, 0.36, 1);
+    transition: opacity 1.38s cubic-bezier(0.22, 1, 0.36, 1);
   }
   #curtain.fade-out {
     opacity: 0;
   }
 
-  /* 极简纸墨风 HUD */
+  /* 收尾：镜头没入茶汤，暗场像瞳孔一样自四周合拢（不是一团橙色光球） */
+  #tea-wash {
+    position: fixed;
+    inset: 0;
+    z-index: 30;
+    pointer-events: none;
+    opacity: 0;
+    overflow: hidden;
+    background: radial-gradient(circle at 50% 52%,
+      rgba(9, 6, 3, 0) 0%,
+      rgba(9, 6, 3, 0) 30%,
+      rgba(26, 13, 6, 0.42) 48%,
+      rgba(17, 9, 4, 0.86) 66%,
+      rgba(8, 5, 3, 0.98) 84%,
+      #050402 100%);
+    transform: scale(1.75);
+    will-change: transform, opacity;
+  }
+  #tea-wash .ring {
+    position: absolute;
+    left: 50%;
+    top: 52%;
+    width: 52vmin;
+    height: 52vmin;
+    margin: -26vmin 0 0 -26vmin;
+    border-radius: 50%;
+    border: 1px solid rgba(226, 189, 142, 0.30);
+    opacity: 0;
+    transform: scale(0.12);
+    will-change: transform, opacity;
+  }
+  #tea-wash .core {
+    position: absolute;
+    left: 50%;
+    top: 52%;
+    width: 74vmin;
+    height: 1px;
+    margin: -0.5px 0 0 -37vmin;
+    opacity: 0;
+    background: linear-gradient(90deg,
+      rgba(255, 236, 208, 0) 0%,
+      rgba(255, 236, 208, 0.20) 34%,
+      rgba(255, 246, 232, 0.34) 50%,
+      rgba(255, 236, 208, 0.20) 66%,
+      rgba(255, 236, 208, 0) 100%);
+    filter: blur(0.6px);
+    will-change: transform, opacity;
+  }
+  #tea-wash .dim {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    background: #050403;
+  }
+
+  /* 极简宣纸墨风 HUD */
   #hud {
     position: fixed;
     inset: 0;
@@ -91,11 +146,15 @@
     justify-content: space-between;
     opacity: 0;
     transform: translateY(4px);
-    transition: opacity 1.3s cubic-bezier(0.16, 1, 0.3, 1), transform 1.3s cubic-bezier(0.16, 1, 0.3, 1);
+    transition: opacity 1.25s cubic-bezier(0.16, 1, 0.3, 1), transform 1.25s cubic-bezier(0.16, 1, 0.3, 1);
   }
   #hud.visible {
     opacity: 1;
     transform: translateY(0);
+  }
+  #hud.outro {
+    opacity: 0;
+    transform: translateY(10px);
   }
 
   .hud-top {
@@ -104,7 +163,6 @@
     align-items: flex-start;
   }
 
-  /* 左上：朱红小印章「香」+ 竖排「茶烟」「修身养性」 */
   .brand-col {
     display: flex;
     flex-direction: row;
@@ -112,14 +170,14 @@
     gap: 16px;
     padding: 10px 16px 14px 10px;
     border-radius: 2px;
-    background: radial-gradient(ellipse at 20% 25%, rgba(12, 10, 8, 0.42) 0%, rgba(12, 10, 8, 0) 80%);
+    background: radial-gradient(ellipse at 20% 25%, rgba(12, 10, 8, 0.44) 0%, rgba(12, 10, 8, 0) 80%);
   }
 
   .seal {
     width: 24px;
     height: 24px;
     border: 1px solid rgba(186, 56, 42, 0.85);
-    background: rgba(155, 41, 30, 0.24);
+    background: rgba(155, 41, 30, 0.25);
     color: #e66b5b;
     font-size: 12px;
     line-height: 1;
@@ -146,12 +204,10 @@
     font-weight: 400;
   }
 
-  /* HUD 整体不拦截拖拽，但按钮必须可点 */
   .view-btn, .action-link {
     pointer-events: auto;
   }
 
-  /* 右上：三机位切换「茶席」「香篆」「书画」 */
   .view-switcher {
     pointer-events: auto;
     display: flex;
@@ -159,13 +215,13 @@
     gap: 28px;
     padding: 8px 18px;
     background: rgba(12, 10, 8, 0.38);
-    border: 1px solid rgba(230, 223, 211, 0.08);
+    border: 1px solid rgba(232, 225, 213, 0.08);
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
   }
 
   .view-label-prefix {
-    color: rgba(230, 223, 211, 0.36);
+    color: rgba(232, 225, 213, 0.36);
     font-size: 11px;
     letter-spacing: 0.22em;
     margin-right: -6px;
@@ -184,9 +240,7 @@
     transition: color 0.35s ease;
     text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
   }
-  .view-btn:hover {
-    color: var(--c-paper);
-  }
+  .view-btn:hover,
   .view-btn.active {
     color: var(--c-paper);
   }
@@ -206,7 +260,6 @@
     transform: scaleX(1);
   }
 
-  /* 底部区域 */
   .hud-bottom {
     display: flex;
     justify-content: space-between;
@@ -214,7 +267,6 @@
     gap: 32px;
   }
 
-  /* 左下：状态与进度线 */
   .status-block {
     display: flex;
     flex-direction: column;
@@ -242,14 +294,14 @@
     font-size: 11px;
     letter-spacing: 0.16em;
     font-variant-numeric: tabular-nums;
-    color: rgba(230, 223, 211, 0.52);
+    color: rgba(232, 225, 213, 0.54);
   }
 
   .incense-ruler {
     position: relative;
     width: 268px;
     height: 1px;
-    background: rgba(230, 223, 211, 0.18);
+    background: rgba(232, 225, 213, 0.18);
   }
   .incense-ruler::before,
   .incense-ruler::after {
@@ -258,7 +310,7 @@
     top: -2px;
     width: 1px;
     height: 5px;
-    background: rgba(230, 223, 211, 0.28);
+    background: rgba(232, 225, 213, 0.28);
   }
   .incense-ruler::before { left: 0; }
   .incense-ruler::after { right: 0; }
@@ -269,7 +321,7 @@
     top: 0;
     height: 1px;
     width: 0%;
-    background: linear-gradient(90deg, rgba(230, 223, 211, 0.28) 0%, rgba(218, 132, 68, 0.92) 100%);
+    background: linear-gradient(90deg, rgba(232, 225, 213, 0.28) 0%, rgba(218, 132, 68, 0.92) 100%);
     transition: width 0.35s linear;
   }
 
@@ -289,11 +341,10 @@
   .drag-hint {
     font-size: 11px;
     letter-spacing: 0.16em;
-    color: rgba(230, 223, 211, 0.36);
+    color: rgba(232, 225, 213, 0.36);
     margin-top: 2px;
   }
 
-  /* 右下：大号倒计时 + 屏幕名称 display + 延后/提前结束 */
   .timer-cluster {
     display: flex;
     flex-direction: column;
@@ -324,7 +375,7 @@
     font-family: var(--font-sans);
     font-size: 11px;
     letter-spacing: 0.2em;
-    color: rgba(230, 223, 211, 0.42);
+    color: rgba(232, 225, 213, 0.42);
     margin-top: -2px;
     min-height: 15px;
   }
@@ -351,12 +402,12 @@
     letter-spacing: 0.2em;
     cursor: pointer;
     padding: 2px 0 4px 0;
-    border-bottom: 1px solid rgba(230, 223, 211, 0.24);
+    border-bottom: 1px solid rgba(232, 225, 213, 0.24);
     transition: color 0.3s ease, border-color 0.3s ease;
   }
   .action-link:hover {
     color: var(--c-paper);
-    border-bottom-color: rgba(230, 223, 211, 0.82);
+    border-bottom-color: rgba(232, 225, 213, 0.82);
   }
   .action-link.hidden {
     display: none;
@@ -366,7 +417,7 @@
     font-family: var(--font-sans);
     font-size: 10px;
     letter-spacing: 0.14em;
-    color: rgba(230, 223, 211, 0.34);
+    color: rgba(232, 225, 213, 0.34);
   }
   .esc-hint.hidden {
     display: none;
@@ -375,7 +426,7 @@
   #forced-note {
     font-size: 12px;
     letter-spacing: 0.22em;
-    color: rgba(230, 223, 211, 0.56);
+    color: rgba(232, 225, 213, 0.56);
     padding-top: 8px;
     border-top: 1px solid var(--c-faint);
     display: none;
@@ -411,6 +462,13 @@
 <div id="vignette"></div>
 <div id="film-grain"></div>
 <div id="curtain"></div>
+<div id="tea-wash" aria-hidden="true">
+  <div class="ring"></div>
+  <div class="ring"></div>
+  <div class="ring"></div>
+  <div class="core"></div>
+  <div class="dim"></div>
+</div>
 
 <div id="hud">
   <header class="hud-top">
@@ -486,11 +544,16 @@
     forced: false,
     label: '一炷香 · 静坐',
     display: '',
-    hostControlled: false
+    hostControlled: false,
+    active: false
   };
 
   const dom = {
     curtain: document.getElementById('curtain'),
+    teaWash: document.getElementById('tea-wash'),
+    teaWashDim: document.querySelector('#tea-wash .dim'),
+    teaWashCore: document.querySelector('#tea-wash .core'),
+    teaWashRings: document.querySelectorAll('#tea-wash .ring'),
     hud: document.getElementById('hud'),
     filmGrain: document.getElementById('film-grain'),
     statusLabel: document.getElementById('status-label'),
@@ -525,7 +588,6 @@
     dom.progressFill.style.width = (pct * 100).toFixed(2) + '%';
     dom.progressEmber.style.left = (pct * 100).toFixed(2) + '%';
 
-    // 倒计时永远从 remainingMs 计算，绝不把 display 当时间
     dom.countdown.textContent = formatMMSS(appState.remainingMs);
     dom.displayName.textContent = appState.display ? appState.display : '';
     dom.displayName.style.display = appState.display ? 'block' : 'none';
@@ -543,9 +605,17 @@
       : '拖动环视 · 1/2/3 切换视角';
   }
 
+  let restStarted = false;
+  let outroStarted = false;
+  let burnTarget = 1.0;
+  let burnCurrent = 1.0;
+
   window.shrineState = function(s) {
     if (!s || typeof s !== 'object') return;
+    const wasActive = appState.active;
     appState.hostControlled = true;
+
+    if (typeof s.active === 'boolean') appState.active = s.active;
 
     if (typeof s.totalMs === 'number' && s.totalMs > 0) {
       appState.totalMs = s.totalMs;
@@ -560,11 +630,19 @@
       appState.targetProgress = Math.max(0, Math.min(1, 1 - appState.remainingMs / appState.totalMs));
     }
 
+    if (appState.totalMs > 0) {
+      burnTarget = Math.max(0, Math.min(1, appState.remainingMs / appState.totalMs));
+    }
+
     if (typeof s.canPostpone === 'boolean') appState.canPostpone = s.canPostpone;
     if (typeof s.canSkip === 'boolean') appState.canSkip = s.canSkip;
     if (typeof s.forced === 'boolean') appState.forced = s.forced;
     if (typeof s.label === 'string' && s.label.trim()) appState.label = s.label.trim();
     if (typeof s.display === 'string') appState.display = s.display.trim();
+
+    if (!appState.active) restStarted = false;
+    if (appState.active && !wasActive) beginSession();
+    if (appState.active && restStarted && appState.remainingMs <= 0 && !outroStarted) startOutro();
 
     renderHUD();
   };
@@ -578,7 +656,7 @@
       } else if (payload.type === 'view' && payload.view) {
         window.shrineView(payload.view, true);
       } else {
-        if ('remainingMs' in payload || 'progress' in payload || 'forced' in payload || 'display' in payload) {
+        if ('remainingMs' in payload || 'progress' in payload || 'forced' in payload || 'display' in payload || 'active' in payload) {
           window.shrineState(payload);
         }
         if (typeof payload.view === 'string') {
@@ -588,7 +666,7 @@
     } catch (_) {}
   });
 
-  // 生成微妙胶片噪点背景
+  // 胶片噪点层
   (function initFilmGrain() {
     const c = document.createElement('canvas');
     c.width = 128;
@@ -606,7 +684,7 @@
     dom.filmGrain.style.backgroundImage = 'url(' + c.toDataURL() + ')';
   })();
 
-  // 墙上挂轴彩蛋：每次休息随机抽一条格言，随机挂位/倾斜/题款/朱印
+  // 墙上挂轴格言库：每次休息随机抽一条格言、落款、朱印与轻微挂位变化
   const SCROLL_LINES = [
     ['心安即归处', '焚香默坐', '清心'],
     ['得失随缘', '清心居静坐题', '自在'],
@@ -636,41 +714,44 @@
     ['一念心清净', '莲花处处开', '清净']
   ];
   const scrollPick = SCROLL_LINES[(Math.random() * SCROLL_LINES.length) | 0];
-  const scrollChars = Array.from(scrollPick[0]);
-  const scrollInscription = scrollPick[1];
-  const scrollSealChars = Array.from(scrollPick[2]);
-  const scrollHangX = -0.6 + Math.random() * 1.2;
-  const scrollHangY = 1.36 + Math.random() * 0.16;
-  const scrollHangTilt = (Math.random() - 0.5) * 0.022;
+  let scrollChars = Array.from(scrollPick[0]);
+  let scrollInscription = scrollPick[1];
+  let scrollSealChars = Array.from(scrollPick[2]);
+  let scrollHangX = -0.32 + Math.random() * 0.72;
+  let scrollHangY = 1.38 + Math.random() * 0.14;
+  let scrollHangTilt = (Math.random() - 0.5) * 0.018;
 
   // ============================================================================
-  // 1. WebGLRenderer、Scene、Camera 与 PMREM 真实环境反射初始化
+  // 1. WebGLRenderer、Scene、Camera 与物理级环境反射贴图 (PMREM)
   // ============================================================================
   const container = document.getElementById('webgl-container');
+  const lowEnd = (navigator.hardwareConcurrency || 8) <= 4;
+  const maxPixelRatio = lowEnd ? 1.0 : 1.5;
+
   const renderer = new THREE.WebGLRenderer({
-    antialias: true,
+    antialias: !lowEnd,
     powerPreference: 'high-performance',
     alpha: false
   });
-  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio));
   renderer.setSize(window.innerWidth, window.innerHeight);
   renderer.shadowMap.enabled = true;
-  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.shadowMap.type = lowEnd ? THREE.PCFShadowMap : THREE.PCFSoftShadowMap;
   renderer.toneMapping = THREE.ACESFilmicToneMapping;
-  renderer.toneMappingExposure = 1.34;
+  renderer.toneMappingExposure = 1.36;
   if ('outputColorSpace' in renderer && THREE.SRGBColorSpace) {
     renderer.outputColorSpace = THREE.SRGBColorSpace;
+  } else if ('outputEncoding' in renderer && THREE.sRGBEncoding) {
+    renderer.outputEncoding = THREE.sRGBEncoding;
   }
   container.appendChild(renderer.domElement);
 
   const scene = new THREE.Scene();
-  scene.background = new THREE.Color(0x14110e);
-  scene.fog = new THREE.FogExp2(0x16130f, 0.042);
+  scene.background = new THREE.Color(0x120f0c);
+  scene.fog = new THREE.FogExp2(0x14110d, 0.038);
 
-  // 50mm 标准电影定焦镜头感（垂直 FOV 约 31 度）
-  const camera = new THREE.PerspectiveCamera(31, window.innerWidth / window.innerHeight, 0.05, 35);
-
-  const maxAniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  const camera = new THREE.PerspectiveCamera(31, window.innerWidth / window.innerHeight, 0.04, 32);
+  const maxAniso = Math.min(lowEnd ? 2 : 8, renderer.capabilities.getMaxAnisotropy());
 
   function createSeededRandom(seed) {
     let s = seed % 2147483647;
@@ -694,58 +775,68 @@
       tex.wrapT = THREE.RepeatWrapping;
       tex.repeat.set(options.repeatX || 1, options.repeatY || 1);
     }
-    if (options.srgb && 'colorSpace' in tex && THREE.SRGBColorSpace) {
-      tex.colorSpace = THREE.SRGBColorSpace;
+    if (options.srgb) {
+      if ('colorSpace' in tex && THREE.SRGBColorSpace) {
+        tex.colorSpace = THREE.SRGBColorSpace;
+      } else if ('encoding' in tex && THREE.sRGBEncoding) {
+        tex.encoding = THREE.sRGBEncoding;
+      }
     }
     tex.anisotropy = maxAniso;
     tex.needsUpdate = true;
     return tex;
   }
 
-  // 构建程序化全景环境贴图（左侧清冷障子窗晨光 + 右侧温暖土墙漫反射），供青瓷、青铜、茶汤高光反射
+  // 构建具有真实窗格亮带与暖色室内漫反射的 HDR 感全景环境贴图，赋予白瓷、茶汤、紫砂、古铜逼真高光眼神光
   function buildStudioEnvironment() {
     const envTex = makeCanvasTexture(1024, 512, (ctx, w, h) => {
-      // 室内京都土墙基底渐变
       const bg = ctx.createLinearGradient(0, 0, 0, h);
-      bg.addColorStop(0.0, '#17130f');
-      bg.addColorStop(0.45, '#30271f');
-      bg.addColorStop(0.55, '#241c15');
-      bg.addColorStop(1.0, '#0f0b08');
+      bg.addColorStop(0.0, '#16120e');
+      bg.addColorStop(0.45, '#2e251d');
+      bg.addColorStop(0.55, '#221a14');
+      bg.addColorStop(1.0, '#0d0907');
       ctx.fillStyle = bg;
       ctx.fillRect(0, 0, w, h);
 
-      // 左侧障子窗大面积清冷晨光高光带（给青瓷与铜炉提供逼真的窗格眼神光）
-      const winX = w * 0.16;
-      const winY = h * 0.22;
-      const winW = w * 0.22;
-      const winH = h * 0.44;
+      // 左侧障子窗大面积柔和晨光（带真实窗棂暗格，反射在白瓷杯和茶汤表面）
+      const winX = w * 0.15;
+      const winY = h * 0.18;
+      const winW = w * 0.24;
+      const winH = h * 0.48;
 
       const winGlow = ctx.createRadialGradient(
-        winX + winW * 0.5, winY + winH * 0.5, 10,
-        winX + winW * 0.5, winY + winH * 0.5, winW * 0.95
+        winX + winW * 0.5, winY + winH * 0.5, 12,
+        winX + winW * 0.5, winY + winH * 0.5, winW * 1.05
       );
-      winGlow.addColorStop(0.0, 'rgba(235, 244, 255, 0.95)');
-      winGlow.addColorStop(0.5, 'rgba(188, 210, 232, 0.55)');
-      winGlow.addColorStop(1.0, 'rgba(60, 75, 92, 0.0)');
+      winGlow.addColorStop(0.0, 'rgba(242, 248, 255, 0.98)');
+      winGlow.addColorStop(0.48, 'rgba(195, 216, 236, 0.62)');
+      winGlow.addColorStop(1.0, 'rgba(55, 70, 88, 0.0)');
       ctx.fillStyle = winGlow;
-      ctx.fillRect(0, 0, w * 0.5, h);
+      ctx.fillRect(0, 0, w * 0.55, h);
 
-      ctx.fillStyle = '#e8f1fa';
+      ctx.fillStyle = '#edf4fc';
       ctx.fillRect(winX, winY, winW, winH);
 
-      // 反射中的障子木格暗线
-      ctx.fillStyle = '#2d2219';
-      for (let i = 0; i <= 4; i++) {
-        ctx.fillRect(winX + (winW / 4) * i - 2, winY, 4, winH);
+      // 窗格木条在环境反射中的真实投影
+      ctx.fillStyle = '#2d2118';
+      for (let i = 0; i <= 5; i++) {
+        ctx.fillRect(winX + (winW / 5) * i - 2, winY, 4, winH);
       }
-      for (let j = 0; j <= 5; j++) {
-        ctx.fillRect(winX, winY + (winH / 5) * j - 2, winW, 4);
+      for (let j = 0; j <= 6; j++) {
+        ctx.fillRect(winX, winY + (winH / 6) * j - 2, winW, 4);
       }
 
+      // 顶部柔光漫反射带（让茶汤液面与紫砂壶肩有温润天光）
+      const topSoft = ctx.createRadialGradient(w * 0.42, h * 0.12, 8, w * 0.42, h * 0.12, w * 0.30);
+      topSoft.addColorStop(0.0, 'rgba(235, 226, 210, 0.48)');
+      topSoft.addColorStop(1.0, 'rgba(30, 24, 18, 0.0)');
+      ctx.fillStyle = topSoft;
+      ctx.fillRect(0, 0, w, h * 0.45);
+
       // 右侧室内暖色漫反射柔光
-      const warmBounce = ctx.createRadialGradient(w * 0.72, h * 0.46, 10, w * 0.72, h * 0.46, w * 0.28);
-      warmBounce.addColorStop(0.0, 'rgba(255, 198, 138, 0.65)');
-      warmBounce.addColorStop(0.5, 'rgba(196, 136, 82, 0.25)');
+      const warmBounce = ctx.createRadialGradient(w * 0.74, h * 0.46, 10, w * 0.74, h * 0.46, w * 0.28);
+      warmBounce.addColorStop(0.0, 'rgba(255, 198, 138, 0.68)');
+      warmBounce.addColorStop(0.5, 'rgba(196, 136, 82, 0.26)');
       warmBounce.addColorStop(1.0, 'rgba(40, 28, 18, 0.0)');
       ctx.fillStyle = warmBounce;
       ctx.fillRect(w * 0.4, 0, w * 0.6, h);
@@ -763,21 +854,22 @@
   buildStudioEnvironment();
 
   // ============================================================================
-  // 2. 高精度程序化材质贴图库 (1024 / 2048 分辨率)
+  // 2. 照片级程序化材质贴图库（老胡桃木、聚乐土墙、宜兴原矿紫砂、羊脂白瓷、熟普茶汤、宣德铜炉、草木香灰）
   // ============================================================================
   const textures = {};
 
   function buildProceduralTextures() {
-    const rand = createSeededRandom(202604);
+    const rand = createSeededRandom(202608);
+    const texSize = lowEnd ? 512 : 1024;
 
     // 2.1 胡桃老木茶桌贴图（色彩 + 凹凸粗糙度）
     const woodBumpCanvas = document.createElement('canvas');
-    woodBumpCanvas.width = 1024;
-    woodBumpCanvas.height = 1024;
+    woodBumpCanvas.width = texSize;
+    woodBumpCanvas.height = texSize;
     const wbCtx = woodBumpCanvas.getContext('2d');
 
-    textures.walnutColor = makeCanvasTexture(1024, 1024, (ctx, w, h) => {
-      ctx.fillStyle = '#291a11';
+    textures.walnutColor = makeCanvasTexture(texSize, texSize, (ctx, w, h) => {
+      ctx.fillStyle = '#26170f';
       ctx.fillRect(0, 0, w, h);
       wbCtx.fillStyle = '#787878';
       wbCtx.fillRect(0, 0, w, h);
@@ -785,28 +877,28 @@
       for (let y = 0; y < h; y++) {
         const n1 = Math.sin(y * 0.022) * 18 + Math.cos(y * 0.075) * 6;
         const grain = Math.sin((y + n1) * 0.14) * 0.5 + 0.5;
-        const r = Math.floor(34 + grain * 24);
-        const g = Math.floor(21 + grain * 15);
-        const b = Math.floor(14 + grain * 10);
+        const r = Math.floor(32 + grain * 24);
+        const g = Math.floor(19 + grain * 15);
+        const b = Math.floor(12 + grain * 10);
         ctx.fillStyle = `rgb(${r},${g},${b})`;
         ctx.fillRect(0, y, w, 1);
 
-        const bv = Math.floor(105 + grain * 36);
+        const bv = Math.floor(104 + grain * 38);
         wbCtx.fillStyle = `rgb(${bv},${bv},${bv})`;
         wbCtx.fillRect(0, y, w, 1);
       }
 
-      // 木材导管棕眼与包浆光泽变化
-      for (let i = 0; i < 4200; i++) {
+      const poreCount = lowEnd ? 2200 : 4200;
+      for (let i = 0; i < poreCount; i++) {
         const x = rand() * w;
         const y = rand() * h;
-        const len = 18 + rand() * 95;
+        const len = 16 + rand() * 88;
         const dark = rand() > 0.35;
-        ctx.fillStyle = dark ? 'rgba(12, 7, 4, 0.22)' : 'rgba(82, 52, 34, 0.12)';
-        ctx.fillRect(x, y, len, 1 + rand() * 1.8);
+        ctx.fillStyle = dark ? 'rgba(10, 6, 3, 0.24)' : 'rgba(84, 54, 35, 0.13)';
+        ctx.fillRect(x, y, len, 1 + rand() * 1.6);
 
-        wbCtx.fillStyle = dark ? 'rgba(55,55,55,0.35)' : 'rgba(155,155,155,0.22)';
-        ctx.fillRect(x, y, len, 1.2);
+        wbCtx.fillStyle = dark ? 'rgba(52,52,52,0.36)' : 'rgba(158,158,158,0.22)';
+        wbCtx.fillRect(x, y, len, 1.2);
       }
     }, { repeatX: 2, repeatY: 1, srgb: true });
 
@@ -818,36 +910,35 @@
 
     // 2.2 京都聚乐土墙（暖灰黄泥 + 细小稻草纤维与矿物颗粒）
     const wallBumpCanvas = document.createElement('canvas');
-    wallBumpCanvas.width = 1024;
-    wallBumpCanvas.height = 1024;
+    wallBumpCanvas.width = texSize;
+    wallBumpCanvas.height = texSize;
     const wlmCtx = wallBumpCanvas.getContext('2d');
 
-    textures.plasterWall = makeCanvasTexture(1024, 1024, (ctx, w, h) => {
+    textures.plasterWall = makeCanvasTexture(texSize, texSize, (ctx, w, h) => {
       const g = ctx.createLinearGradient(0, 0, w, h);
-      g.addColorStop(0.0, '#6b5e4e');
-      g.addColorStop(0.5, '#615445');
-      g.addColorStop(1.0, '#524639');
+      g.addColorStop(0.0, '#695c4d');
+      g.addColorStop(0.5, '#5f5243');
+      g.addColorStop(1.0, '#504437');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
 
       wlmCtx.fillStyle = '#808080';
       wlmCtx.fillRect(0, 0, w, h);
 
-      // 抹泥云状肌理
-      for (let i = 0; i < 360; i++) {
+      for (let i = 0; i < 280; i++) {
         const x = rand() * w;
         const y = rand() * h;
-        const rad = 30 + rand() * 90;
+        const rad = 28 + rand() * 85;
         const rg = ctx.createRadialGradient(x, y, 2, x, y, rad);
-        const tint = rand() > 0.5 ? 'rgba(122, 108, 90, 0.06)' : 'rgba(58, 48, 38, 0.06)';
+        const tint = rand() > 0.5 ? 'rgba(122, 108, 90, 0.06)' : 'rgba(56, 46, 36, 0.06)';
         rg.addColorStop(0, tint);
         rg.addColorStop(1, 'rgba(0,0,0,0)');
         ctx.fillStyle = rg;
         ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
       }
 
-      // 砂砾与极细微稻草筋
-      for (let i = 0; i < 9000; i++) {
+      const gritCount = lowEnd ? 4500 : 8500;
+      for (let i = 0; i < gritCount; i++) {
         const x = rand() * w;
         const y = rand() * h;
         const v = Math.floor(68 + rand() * 48);
@@ -861,7 +952,7 @@
 
       ctx.strokeStyle = 'rgba(145, 130, 104, 0.18)';
       ctx.lineWidth = 1;
-      for (let i = 0; i < 420; i++) {
+      for (let i = 0; i < 360; i++) {
         const x = rand() * w;
         const y = rand() * h;
         const ang = rand() * Math.PI * 2;
@@ -878,7 +969,7 @@
     textures.plasterBump.wrapT = THREE.RepeatWrapping;
     textures.plasterBump.repeat.set(2, 2);
 
-    // 2.3 榻榻米蔺草编织纹理
+    // 2.3 榻榻米蔺草席编织纹理
     const tatamiBumpCanvas = document.createElement('canvas');
     tatamiBumpCanvas.width = 512;
     tatamiBumpCanvas.height = 512;
@@ -898,7 +989,6 @@
         tbCtx.fillStyle = y % 6 === 0 ? '#a8a8a8' : '#585858';
         tbCtx.fillRect(0, y, w, 2);
       }
-      // 纵向经线压痕
       for (let x = 0; x < w; x += 8) {
         ctx.fillStyle = 'rgba(32, 30, 20, 0.22)';
         ctx.fillRect(x, 0, 2, h);
@@ -912,26 +1002,27 @@
     textures.tatamiBump.wrapT = THREE.RepeatWrapping;
     textures.tatamiBump.repeat.set(6, 6);
 
-    // 2.4 宣德古青铜三足炉（熟铜包浆、局部暗绿氧化层与弦纹凹凸）
+    // 2.4 宣德古青铜三足炉（熟铜棠梨皮包浆、局部翠斑与细微肌理）
     const bronzeRoughCanvas = document.createElement('canvas');
-    bronzeRoughCanvas.width = 1024;
-    bronzeRoughCanvas.height = 1024;
+    bronzeRoughCanvas.width = texSize;
+    bronzeRoughCanvas.height = texSize;
     const brCtx = bronzeRoughCanvas.getContext('2d');
 
-    textures.bronzeColor = makeCanvasTexture(1024, 1024, (ctx, w, h) => {
+    textures.bronzeColor = makeCanvasTexture(texSize, texSize, (ctx, w, h) => {
       const grad = ctx.createLinearGradient(0, 0, 0, h);
       grad.addColorStop(0.0, '#4a3522');
-      grad.addColorStop(0.28, '#664a30');
+      grad.addColorStop(0.28, '#684b31');
       grad.addColorStop(0.55, '#3b2919');
       grad.addColorStop(0.82, '#543c26');
       grad.addColorStop(1.0, '#291c11');
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, w, h);
 
-      brCtx.fillStyle = '#626262';
+      brCtx.fillStyle = '#606060';
       brCtx.fillRect(0, 0, w, h);
 
-      for (let i = 0; i < 4500; i++) {
+      const spotCount = lowEnd ? 2200 : 4200;
+      for (let i = 0; i < spotCount; i++) {
         const x = rand() * w;
         const y = rand() * h;
         const r = 3 + rand() * 14;
@@ -942,7 +1033,7 @@
         } else {
           const warm = rand() > 0.45;
           ctx.fillStyle = warm ? 'rgba(138, 102, 64, 0.07)' : 'rgba(22, 15, 9, 0.12)';
-          brCtx.fillStyle = warm ? 'rgba(72, 72, 72, 0.15)' : 'rgba(115, 115, 115, 0.15)';
+          brCtx.fillStyle = warm ? 'rgba(70, 70, 70, 0.15)' : 'rgba(115, 115, 115, 0.15)';
         }
         ctx.beginPath();
         ctx.arc(x, y, r, 0, Math.PI * 2);
@@ -959,56 +1050,56 @@
     textures.bronzeRoughness.wrapT = THREE.RepeatWrapping;
     textures.bronzeRoughness.repeat.set(2, 1);
 
-    // 2.5 炉内细腻草木香灰（真实微颗粒与自然涟漪起伏）
+    // 2.5 炉内细腻草木香灰（真实微颗粒与理灰同心纹）
     const ashBumpCanvas = document.createElement('canvas');
-    ashBumpCanvas.width = 1024;
-    ashBumpCanvas.height = 1024;
+    ashBumpCanvas.width = texSize;
+    ashBumpCanvas.height = texSize;
     const abCtx = ashBumpCanvas.getContext('2d');
 
-    textures.incenseAsh = makeCanvasTexture(1024, 1024, (ctx, w, h) => {
-      ctx.fillStyle = '#9c968c';
+    textures.incenseAsh = makeCanvasTexture(texSize, texSize, (ctx, w, h) => {
+      ctx.fillStyle = '#9e988e';
       ctx.fillRect(0, 0, w, h);
       abCtx.fillStyle = '#808080';
       abCtx.fillRect(0, 0, w, h);
 
-      // 中心插香处微暗与环状理灰纹理
       const cg = ctx.createRadialGradient(w * 0.5, h * 0.5, 6, w * 0.5, h * 0.5, w * 0.48);
-      cg.addColorStop(0.0, 'rgba(68, 63, 56, 0.35)');
-      cg.addColorStop(0.35, 'rgba(158, 152, 142, 0.08)');
+      cg.addColorStop(0.0, 'rgba(68, 63, 56, 0.36)');
+      cg.addColorStop(0.35, 'rgba(160, 154, 144, 0.08)');
       cg.addColorStop(0.82, 'rgba(132, 126, 118, 0.15)');
-      cg.addColorStop(1.0, 'rgba(54, 50, 44, 0.55)');
+      cg.addColorStop(1.0, 'rgba(52, 48, 42, 0.55)');
       ctx.fillStyle = cg;
       ctx.fillRect(0, 0, w, h);
 
-      for (let i = 0; i < 28000; i++) {
+      const ashDots = lowEnd ? 14000 : 26000;
+      for (let i = 0; i < ashDots; i++) {
         const x = rand() * w;
         const y = rand() * h;
-        const d = Math.floor(122 + (rand() - 0.5) * 58);
+        const d = Math.floor(124 + (rand() - 0.5) * 56);
         ctx.fillStyle = `rgb(${d}, ${d - 3}, ${d - 8})`;
-        ctx.fillRect(x, y, 1.6, 1.6);
+        ctx.fillRect(x, y, 1.5, 1.5);
 
         const bv = Math.floor(70 + rand() * 115);
         abCtx.fillStyle = `rgb(${bv},${bv},${bv})`;
-        abCtx.fillRect(x, y, 2.0, 2.0);
+        abCtx.fillRect(x, y, 1.8, 1.8);
       }
     }, { srgb: true });
 
     textures.ashBump = new THREE.CanvasTexture(ashBumpCanvas);
     textures.ashBump.anisotropy = maxAniso;
 
-    // 2.6 线香香粉涂层表面纹理（米棕檀香木粉颗粒与植物纤维感）
+    // 2.6 线香香粉表面纹理（天然沉檀木粉细腻颗粒）
     const stickBumpCanvas = document.createElement('canvas');
     stickBumpCanvas.width = 256;
     stickBumpCanvas.height = 1024;
     const sbCtx = stickBumpCanvas.getContext('2d');
 
     textures.incenseStick = makeCanvasTexture(256, 1024, (ctx, w, h) => {
-      ctx.fillStyle = '#c6b394';
+      ctx.fillStyle = '#c4b192';
       ctx.fillRect(0, 0, w, h);
       sbCtx.fillStyle = '#808080';
       sbCtx.fillRect(0, 0, w, h);
 
-      for (let i = 0; i < 14000; i++) {
+      for (let i = 0; i < 12000; i++) {
         const x = rand() * w;
         const y = rand() * h;
         const delta = (rand() - 0.5) * 34;
@@ -1027,38 +1118,142 @@
     textures.stickBump = new THREE.CanvasTexture(stickBumpCanvas);
     textures.stickBump.anisotropy = maxAniso;
 
-    // 2.7 宜兴紫泥紫砂纹理（砂感金星颗粒）
+    // 2.7 宜兴原矿底槽清紫泥紫砂（双重气孔砂粒感、金砂隐现、茶汤养壶温润包浆）
     const zishaBumpCanvas = document.createElement('canvas');
     zishaBumpCanvas.width = 512;
     zishaBumpCanvas.height = 512;
     const zbCtx = zishaBumpCanvas.getContext('2d');
 
     textures.zisha = makeCanvasTexture(512, 512, (ctx, w, h) => {
-      ctx.fillStyle = '#4f2d22';
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0.0, '#593326');
+      g.addColorStop(0.5, '#4e2b20');
+      g.addColorStop(1.0, '#3e2118');
+      ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
+
       zbCtx.fillStyle = '#808080';
       zbCtx.fillRect(0, 0, w, h);
 
-      for (let i = 0; i < 12000; i++) {
+      for (let i = 0; i < 16000; i++) {
         const x = rand() * w;
         const y = rand() * h;
-        const isQuartz = rand() < 0.08;
-        if (isQuartz) {
-          ctx.fillStyle = 'rgba(182, 142, 106, 0.45)';
-          zbCtx.fillStyle = '#b8b8b8';
+        const roll = rand();
+        if (roll < 0.09) {
+          // 原矿本山绿泥/金砂颗粒（俗称桂花砂）
+          ctx.fillStyle = 'rgba(196, 154, 112, 0.50)';
+          zbCtx.fillStyle = '#bcbcbc';
+        } else if (roll < 0.16) {
+          // 云母铁质暗点
+          ctx.fillStyle = 'rgba(28, 13, 9, 0.48)';
+          zbCtx.fillStyle = '#525252';
         } else {
           const dark = rand() > 0.5;
-          ctx.fillStyle = dark ? 'rgba(48, 24, 16, 0.35)' : 'rgba(104, 62, 46, 0.28)';
-          zbCtx.fillStyle = dark ? '#646464' : '#989898';
+          ctx.fillStyle = dark ? 'rgba(46, 22, 15, 0.36)' : 'rgba(110, 65, 48, 0.30)';
+          zbCtx.fillStyle = dark ? '#666666' : '#969696';
         }
-        ctx.fillRect(x, y, 1.6, 1.6);
-        zbCtx.fillRect(x, y, 1.8, 1.8);
+        ctx.fillRect(x, y, 1.5, 1.5);
+        zbCtx.fillRect(x, y, 1.7, 1.7);
       }
     }, { srgb: true });
 
     textures.zishaBump = new THREE.CanvasTexture(zishaBumpCanvas);
+    textures.zishaBump.anisotropy = maxAniso;
 
-    // 2.8 宋代粉青/天青汝窑开片釉纹理
+    // 2.8 粗陶茶盘/壶承（铁胎柴烧感粗陶颗粒纹理）
+    const clayBumpCanvas = document.createElement('canvas');
+    clayBumpCanvas.width = 512;
+    clayBumpCanvas.height = 512;
+    const cbCtx = clayBumpCanvas.getContext('2d');
+
+    textures.terracotta = makeCanvasTexture(512, 512, (ctx, w, h) => {
+      const rg = ctx.createRadialGradient(w * 0.5, h * 0.5, 10, w * 0.5, h * 0.5, w * 0.55);
+      rg.addColorStop(0.0, '#3a2d26');
+      rg.addColorStop(0.7, '#30241e');
+      rg.addColorStop(1.0, '#231a15');
+      ctx.fillStyle = rg;
+      ctx.fillRect(0, 0, w, h);
+
+      cbCtx.fillStyle = '#7c7c7c';
+      cbCtx.fillRect(0, 0, w, h);
+
+      // 陶轮拉坯同心旋纹
+      ctx.strokeStyle = 'rgba(20, 14, 10, 0.22)';
+      cbCtx.strokeStyle = 'rgba(105, 105, 105, 0.35)';
+      for (let r = 12; r < w * 0.48; r += 5 + rand() * 4) {
+        ctx.lineWidth = 1.2;
+        ctx.beginPath();
+        ctx.arc(w * 0.5, h * 0.5, r, 0, Math.PI * 2);
+        ctx.stroke();
+
+        cbCtx.lineWidth = 1.5;
+        cbCtx.beginPath();
+        cbCtx.arc(w * 0.5, h * 0.5, r, 0, Math.PI * 2);
+        cbCtx.stroke();
+      }
+
+      for (let i = 0; i < 14000; i++) {
+        const x = rand() * w;
+        const y = rand() * h;
+        const grit = rand() < 0.12;
+        ctx.fillStyle = grit ? 'rgba(148, 116, 92, 0.32)' : 'rgba(22, 16, 12, 0.35)';
+        ctx.fillRect(x, y, 1.8, 1.8);
+
+        const bv = grit ? 155 : 58;
+        cbCtx.fillStyle = `rgb(${bv},${bv},${bv})`;
+        cbCtx.fillRect(x, y, 2.0, 2.0);
+      }
+    }, { srgb: true });
+
+    textures.terracottaBump = new THREE.CanvasTexture(clayBumpCanvas);
+    textures.terracottaBump.anisotropy = maxAniso;
+
+    // 2.9 德化羊脂白瓷/甜白釉纹理（温润如脂、胎质致密、极细微橘皮釉光感）
+    const porcBumpCanvas = document.createElement('canvas');
+    porcBumpCanvas.width = 512;
+    porcBumpCanvas.height = 512;
+    const pbCtx = porcBumpCanvas.getContext('2d');
+
+    textures.whitePorcelain = makeCanvasTexture(512, 512, (ctx, w, h) => {
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0.0, '#f7f3eb');
+      g.addColorStop(0.65, '#f2ede2');
+      g.addColorStop(1.0, '#e6dfd1');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+
+      pbCtx.fillStyle = '#808080';
+      pbCtx.fillRect(0, 0, w, h);
+
+      for (let i = 0; i < 1800; i++) {
+        const x = rand() * w;
+        const y = rand() * h;
+        const r = 2 + rand() * 5;
+        const v = 124 + Math.floor((rand() - 0.5) * 14);
+        pbCtx.fillStyle = `rgb(${v},${v},${v})`;
+        pbCtx.beginPath();
+        pbCtx.arc(x, y, r, 0, Math.PI * 2);
+        pbCtx.fill();
+      }
+    }, { srgb: true });
+
+    textures.porcelainBump = new THREE.CanvasTexture(porcBumpCanvas);
+
+    // 2.10 茶汤径向琥珀汤色贴图（白瓷杯底映衬下的“金圈”与深琥珀红浓核心）
+    textures.teaLiquor = makeCanvasTexture(256, 256, (ctx, w, h) => {
+      const cx = w * 0.5;
+      const cy = h * 0.5;
+      const rg = ctx.createRadialGradient(cx, cy, 2, cx, cy, w * 0.5);
+      rg.addColorStop(0.0, '#3c1605');
+      rg.addColorStop(0.45, '#4a1c07');
+      rg.addColorStop(0.78, '#5a2509');
+      rg.addColorStop(0.94, '#5e280b');
+      rg.addColorStop(1.0, '#421a06');
+      ctx.fillStyle = rg;
+      ctx.fillRect(0, 0, w, h);
+    }, { srgb: true });
+
+    // 2.11 宋代粉青汝窑开片釉纹理（用于左后方花瓶）
     textures.celadon = makeCanvasTexture(512, 512, (ctx, w, h) => {
       const g = ctx.createLinearGradient(0, 0, 0, h);
       g.addColorStop(0.0, '#8ba399');
@@ -1067,7 +1262,6 @@
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
 
-      // 极淡蝉翼冰裂纹开片
       ctx.strokeStyle = 'rgba(48, 62, 56, 0.16)';
       ctx.lineWidth = 1;
       for (let i = 0; i < 85; i++) {
@@ -1084,8 +1278,8 @@
       }
     }, { srgb: true });
 
-    // 2.9 障子窗和纸（云龙纸纤维 + 窗外清冷竹叶剪影投影）
-    textures.shojiPaper = makeCanvasTexture(1024, 1024, (ctx, w, h) => {
+    // 2.12 障子窗和纸（云龙纸纤维 + 窗外清冷竹叶剪影投影）
+    textures.shojiPaper = makeCanvasTexture(texSize, texSize, (ctx, w, h) => {
       const grad = ctx.createLinearGradient(0, 0, w, h);
       grad.addColorStop(0.0, '#d8e4ee');
       grad.addColorStop(0.55, '#c6d4e0');
@@ -1093,46 +1287,44 @@
       ctx.fillStyle = grad;
       ctx.fillRect(0, 0, w, h);
 
-      // 窗外竹竿与竹叶柔和失焦剪影
       ctx.save();
-      ctx.filter = 'blur(8px)';
+      ctx.filter = 'blur(7px)';
       ctx.strokeStyle = 'rgba(54, 72, 86, 0.32)';
-      ctx.lineWidth = 14;
+      ctx.lineWidth = 14 * (w / 1024);
       ctx.beginPath();
       ctx.moveTo(w * 0.18, h);
       ctx.quadraticCurveTo(w * 0.34, h * 0.45, w * 0.52, -20);
       ctx.stroke();
 
-      ctx.lineWidth = 9;
+      ctx.lineWidth = 9 * (w / 1024);
       ctx.beginPath();
       ctx.moveTo(w * 0.62, h);
       ctx.quadraticCurveTo(w * 0.68, h * 0.5, w * 0.82, h * 0.08);
       ctx.stroke();
 
-      // 竹叶簇剪影
       ctx.fillStyle = 'rgba(48, 66, 80, 0.28)';
       const leafClusters = [
         [0.32, 0.28], [0.38, 0.22], [0.28, 0.36],
         [0.44, 0.42], [0.70, 0.32], [0.75, 0.25],
         [0.64, 0.48], [0.48, 0.18]
       ];
+      const sc = w / 1024;
       leafClusters.forEach(([cx, cy]) => {
         for (let k = 0; k < 5; k++) {
           ctx.save();
-          ctx.translate(cx * w + (rand() - 0.5) * 40, cy * h + (rand() - 0.5) * 40);
+          ctx.translate(cx * w + (rand() - 0.5) * 40 * sc, cy * h + (rand() - 0.5) * 40 * sc);
           ctx.rotate(-0.4 + (rand() - 0.5) * 0.9);
           ctx.beginPath();
-          ctx.ellipse(0, 0, 42 + rand() * 25, 8 + rand() * 4, 0, 0, Math.PI * 2);
+          ctx.ellipse(0, 0, (42 + rand() * 25) * sc, (8 + rand() * 4) * sc, 0, 0, Math.PI * 2);
           ctx.fill();
           ctx.restore();
         }
       });
       ctx.restore();
 
-      // 和纸桑皮纤维
       ctx.strokeStyle = 'rgba(255, 255, 255, 0.26)';
-      ctx.lineWidth = 1.2;
-      for (let i = 0; i < 900; i++) {
+      ctx.lineWidth = 1.1;
+      for (let i = 0; i < 750; i++) {
         const x = rand() * w;
         const y = rand() * h;
         ctx.beginPath();
@@ -1142,184 +1334,10 @@
       }
     }, { srgb: true });
 
-    // 2.10 墙面挂轴书画（宋式绫锦装裱 + 宣纸「修身养性」书法 + 水墨竹石远山 + 朱文印章）
-    textures.hangingScroll = makeCanvasTexture(1024, 2048, (ctx, w, h) => {
-      // 浅米褐宋锦装裱外框
-      ctx.fillStyle = '#8b7e6a';
-      ctx.fillRect(0, 0, w, h);
+    // 2.13 墙面挂轴书画（宋式绫锦装裱 + 宣纸水墨竹石远山 + 书法 + 双朱印）
+    textures.hangingScroll = makeCanvasTexture(1024, 2048, paintHangingScroll, { srgb: true });
 
-      // 绫边暗纹
-      ctx.strokeStyle = 'rgba(62, 54, 42, 0.16)';
-      ctx.lineWidth = 1;
-      for (let y = 0; y < h; y += 8) {
-        ctx.beginPath();
-        ctx.moveTo(0, y);
-        ctx.lineTo(w, y);
-        ctx.stroke();
-      }
-
-      // 天头与地脚内镶牙色细锦边
-      const padX = 86;
-      const padTop = 230;
-      const padBot = 190;
-      const innerW = w - padX * 2;
-      const innerH = h - padTop - padBot;
-
-      ctx.fillStyle = '#4a3d2f';
-      ctx.fillRect(padX - 8, padTop - 8, innerW + 16, innerH + 16);
-
-      // 熟宣纸画心
-      const paperGrad = ctx.createLinearGradient(0, padTop, 0, padTop + innerH);
-      paperGrad.addColorStop(0.0, '#dfd5c3');
-      paperGrad.addColorStop(0.5, '#d8ccb8');
-      paperGrad.addColorStop(1.0, '#cfc2ac');
-      ctx.fillStyle = paperGrad;
-      ctx.fillRect(padX, padTop, innerW, innerH);
-
-      // 宣纸陈年纤维斑迹
-      for (let i = 0; i < 2400; i++) {
-        ctx.fillStyle = rand() > 0.5 ? 'rgba(255,250,240,0.12)' : 'rgba(150,132,106,0.08)';
-        ctx.fillRect(padX + rand() * innerW, padTop + rand() * innerH, 2 + rand() * 14, 1.5);
-      }
-
-      // 远景淡墨山峦云气（米家云山意境）
-      ctx.save();
-      ctx.beginPath();
-      ctx.rect(padX, padTop, innerW, innerH);
-      ctx.clip();
-
-      const drawMistyMountain = (baseY, peakH, alpha, seedOffset) => {
-        const mGrad = ctx.createLinearGradient(0, baseY - peakH, 0, baseY + 120);
-        mGrad.addColorStop(0.0, `rgba(38, 36, 33, ${alpha})`);
-        mGrad.addColorStop(0.65, `rgba(52, 49, 44, ${alpha * 0.45})`);
-        mGrad.addColorStop(1.0, 'rgba(216, 204, 184, 0.0)');
-        ctx.fillStyle = mGrad;
-        ctx.beginPath();
-        ctx.moveTo(padX, baseY + 120);
-        for (let x = padX; x <= padX + innerW; x += 16) {
-          const nx = (x - padX) / innerW;
-          const hCurve = Math.sin(nx * Math.PI) * peakH * (0.6 + 0.4 * Math.sin(nx * 5.5 + seedOffset))
-            + Math.cos(nx * 13.0 + seedOffset) * 18;
-          ctx.lineTo(x, baseY - Math.max(0, hCurve));
-        }
-        ctx.lineTo(padX + innerW, baseY + 120);
-        ctx.closePath();
-        ctx.fill();
-      };
-
-      drawMistyMountain(padTop + innerH * 0.72, 240, 0.22, 1.1);
-      drawMistyMountain(padTop + innerH * 0.82, 190, 0.34, 3.4);
-
-      // 水墨写意墨竹（画面左下部斜出，留白疏朗）
-      const drawBambooStalk = (x0, y0, angle, segLen, segs, startW) => {
-        let cx = x0;
-        let cy = y0;
-        for (let s = 0; s < segs; s++) {
-          const nx = cx + Math.sin(angle) * segLen;
-          const ny = cy - Math.cos(angle) * segLen;
-          ctx.strokeStyle = `rgba(28, 26, 24, ${0.72 - s * 0.06})`;
-          ctx.lineWidth = Math.max(2.5, startW - s * 1.1);
-          ctx.lineCap = 'round';
-          ctx.beginPath();
-          ctx.moveTo(cx, cy);
-          ctx.lineTo(nx, ny);
-          ctx.stroke();
-
-          // 竹节抱节墨线
-          ctx.strokeStyle = 'rgba(18, 16, 15, 0.85)';
-          ctx.lineWidth = 2.5;
-          ctx.beginPath();
-          ctx.moveTo(nx - 7, ny);
-          ctx.lineTo(nx + 7, ny);
-          ctx.stroke();
-
-          cx = nx + Math.sin(angle) * 4;
-          cy = ny - Math.cos(angle) * 4;
-          angle += 0.035;
-        }
-      };
-
-      drawBambooStalk(padX + 140, padTop + innerH - 30, 0.22, 128, 6, 9.5);
-      drawBambooStalk(padX + 95, padTop + innerH - 10, 0.34, 105, 5, 6.5);
-
-      // 浓淡相间撇竹叶
-      const drawInkLeaf = (lx, ly, ang, len, wid, opacity) => {
-        ctx.save();
-        ctx.translate(lx, ly);
-        ctx.rotate(ang);
-        ctx.fillStyle = `rgba(24, 22, 20, ${opacity})`;
-        ctx.beginPath();
-        ctx.moveTo(0, 0);
-        ctx.quadraticCurveTo(len * 0.45, -wid, len, 0);
-        ctx.quadraticCurveTo(len * 0.45, wid * 0.65, 0, 0);
-        ctx.fill();
-        ctx.restore();
-      };
-
-      const leafNodes = [
-        [padX + 260, padTop + innerH - 420, 0.82],
-        [padX + 310, padTop + innerH - 560, 0.68],
-        [padX + 355, padTop + innerH - 680, 0.78],
-        [padX + 220, padTop + innerH - 310, 0.55]
-      ];
-      leafNodes.forEach(([nx, ny, op]) => {
-        drawInkLeaf(nx, ny, 0.35, 92, 13, op);
-        drawInkLeaf(nx, ny, 0.68, 108, 14, op * 0.9);
-        drawInkLeaf(nx, ny, 1.05, 78, 11, op * 0.75);
-        drawInkLeaf(nx - 14, ny + 12, -2.35, 74, 10, op * 0.6);
-      });
-
-      // 右上主书法：本次随机格言竖排（楷行兼备笔意）
-      ctx.fillStyle = '#1d1b18';
-      ctx.font = '500 106px "Kaiti SC", "STKaiti", "Songti SC", "STSong", "Noto Serif CJK SC", serif';
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-
-      const chars = scrollChars;
-      const charX = padX + innerW * 0.68;
-      const charStartY = padTop + 210;
-      const charGap = chars.length > 6 ? 132 : 152;
-
-      chars.forEach((ch, idx) => {
-        ctx.save();
-        ctx.translate(charX + (idx % 2 === 0 ? -3 : 4), charStartY + idx * charGap);
-        ctx.rotate((idx - 1.5) * 0.015);
-        ctx.fillText(ch, 0, 0);
-        ctx.restore();
-      });
-
-      const textBottom = charStartY + (chars.length - 1) * charGap;
-
-      // 题款小字（随机）
-      ctx.fillStyle = 'rgba(36, 33, 29, 0.78)';
-      ctx.font = '32px "Kaiti SC", "STKaiti", "Songti SC", serif';
-      const insc = scrollInscription;
-      for (let i = 0; i < insc.length; i++) {
-        ctx.fillText(insc[i], padX + innerW * 0.50, textBottom + 80 + i * 44);
-      }
-
-      // 两枚朱红印章（白文 + 朱文，随机识文）
-      const sealX = padX + innerW * 0.50 - 22;
-      const sealY1 = textBottom + 120 + insc.length * 44;
-      ctx.fillStyle = '#9e281d';
-      ctx.fillRect(sealX, sealY1, 44, 44);
-      ctx.fillStyle = '#dfd5c3';
-      ctx.font = '22px "Songti SC", serif';
-      ctx.fillText(scrollSealChars[0], sealX + 22, sealY1 + 14);
-      ctx.fillText(scrollSealChars[1], sealX + 22, sealY1 + 33);
-
-      const sealY2 = sealY1 + 58;
-      ctx.strokeStyle = '#9e281d';
-      ctx.lineWidth = 3;
-      ctx.strokeRect(sealX + 2, sealY2, 40, 40);
-      ctx.fillStyle = '#9e281d';
-      ctx.font = '20px "Songti SC", serif';
-      ctx.fillText(scrollSealChars[0], sealX + 22, sealY2 + 21);
-
-      ctx.restore();
-    }, { srgb: true });
-
-    // 2.11 亚麻茶巾编织纹理
+    // 2.14 亚麻茶巾编织纹理
     textures.teaCloth = makeCanvasTexture(256, 256, (ctx, w, h) => {
       ctx.fillStyle = '#4c463d';
       ctx.fillRect(0, 0, w, h);
@@ -1333,7 +1351,7 @@
       }
     }, { repeatX: 3, repeatY: 3, srgb: true });
 
-    // 2.12 柔和径向辉光与底部接触阴影贴图
+    // 2.15 柔和径向辉光与底部接触阴影贴图
     textures.radialGlow = makeCanvasTexture(128, 128, (ctx, w, h) => {
       const g = ctx.createRadialGradient(w * 0.5, h * 0.5, 0, w * 0.5, h * 0.5, w * 0.5);
       g.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
@@ -1346,18 +1364,244 @@
 
     textures.contactShadow = makeCanvasTexture(128, 128, (ctx, w, h) => {
       const g = ctx.createRadialGradient(w * 0.5, h * 0.5, 0, w * 0.5, h * 0.5, w * 0.5);
-      g.addColorStop(0.0, 'rgba(5, 3, 2, 0.85)');
-      g.addColorStop(0.45, 'rgba(8, 5, 3, 0.52)');
-      g.addColorStop(0.78, 'rgba(10, 7, 4, 0.14)');
+      g.addColorStop(0.0, 'rgba(5, 3, 2, 0.86)');
+      g.addColorStop(0.45, 'rgba(8, 5, 3, 0.54)');
+      g.addColorStop(0.78, 'rgba(10, 7, 4, 0.15)');
       g.addColorStop(1.0, 'rgba(10, 7, 4, 0.0)');
       ctx.fillStyle = g;
       ctx.fillRect(0, 0, w, h);
     });
+
+    // 2.16 香灰屑：不规则、纸灰般的哑光碎屑（不是发光微粒）
+    textures.ashFlake = makeCanvasTexture(64, 64, (ctx, w, h) => {
+      ctx.clearRect(0, 0, w, h);
+      const cx = w * 0.5;
+      const cy = h * 0.5;
+      // 干灰屑：硬边不规则薄片，不是发光团
+      const pts = [
+        [-12, -3], [-7, -9], [1, -11], [8, -7], [12, -1], [9, 6], [2, 10], [-6, 8], [-11, 3]
+      ];
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(0.4);
+      ctx.beginPath();
+      ctx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) ctx.lineTo(pts[i][0], pts[i][1]);
+      ctx.closePath();
+      const g = ctx.createLinearGradient(-12, -11, 12, 10);
+      g.addColorStop(0.0, 'rgba(228, 224, 216, 0.97)');
+      g.addColorStop(0.55, 'rgba(202, 197, 188, 0.95)');
+      g.addColorStop(1.0, 'rgba(163, 158, 149, 0.93)');
+      ctx.fillStyle = g;
+      ctx.fill();
+      ctx.strokeStyle = 'rgba(126, 121, 113, 0.6)';
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(140, 135, 127, 0.5)';
+      ctx.lineWidth = 0.9;
+      ctx.beginPath();
+      ctx.moveTo(-8, -2); ctx.lineTo(1, 1); ctx.lineTo(7, -4);
+      ctx.stroke();
+      ctx.fillStyle = 'rgba(108, 103, 96, 0.55)';
+      ctx.beginPath(); ctx.arc(2.5, 3.5, 1.5, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(-5, -5, 1.1, 0, Math.PI * 2); ctx.fill();
+      ctx.restore();
+    });
+  }
+
+  function paintHangingScroll(ctx, w, h) {
+    const rand = createSeededRandom((Math.random() * 2147483647) | 0);
+
+    ctx.fillStyle = '#8b7e6a';
+    ctx.fillRect(0, 0, w, h);
+
+    ctx.strokeStyle = 'rgba(62, 54, 42, 0.16)';
+    ctx.lineWidth = 1;
+    for (let y = 0; y < h; y += 8) {
+      ctx.beginPath();
+      ctx.moveTo(0, y);
+      ctx.lineTo(w, y);
+      ctx.stroke();
+    }
+
+    const padX = 86;
+    const padTop = 230;
+    const padBot = 190;
+    const innerW = w - padX * 2;
+    const innerH = h - padTop - padBot;
+
+    ctx.fillStyle = '#4a3d2f';
+    ctx.fillRect(padX - 8, padTop - 8, innerW + 16, innerH + 16);
+
+    const paperGrad = ctx.createLinearGradient(0, padTop, 0, padTop + innerH);
+    paperGrad.addColorStop(0.0, '#dfd5c3');
+    paperGrad.addColorStop(0.5, '#d8ccb8');
+    paperGrad.addColorStop(1.0, '#cfc2ac');
+    ctx.fillStyle = paperGrad;
+    ctx.fillRect(padX, padTop, innerW, innerH);
+
+    for (let i = 0; i < 2000; i++) {
+      ctx.fillStyle = rand() > 0.5 ? 'rgba(255,250,240,0.12)' : 'rgba(150,132,106,0.08)';
+      ctx.fillRect(padX + rand() * innerW, padTop + rand() * innerH, 2 + rand() * 14, 1.5);
+    }
+
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(padX, padTop, innerW, innerH);
+    ctx.clip();
+
+    const drawMistyMountain = (baseY, peakH, alpha, seedOffset) => {
+      const mGrad = ctx.createLinearGradient(0, baseY - peakH, 0, baseY + 120);
+      mGrad.addColorStop(0.0, `rgba(38, 36, 33, ${alpha})`);
+      mGrad.addColorStop(0.65, `rgba(52, 49, 44, ${alpha * 0.45})`);
+      mGrad.addColorStop(1.0, 'rgba(216, 204, 184, 0.0)');
+      ctx.fillStyle = mGrad;
+      ctx.beginPath();
+      ctx.moveTo(padX, baseY + 120);
+      for (let x = padX; x <= padX + innerW; x += 16) {
+        const nx = (x - padX) / innerW;
+        const hCurve = Math.sin(nx * Math.PI) * peakH * (0.6 + 0.4 * Math.sin(nx * 5.5 + seedOffset))
+          + Math.cos(nx * 13.0 + seedOffset) * 18;
+        ctx.lineTo(x, baseY - Math.max(0, hCurve));
+      }
+      ctx.lineTo(padX + innerW, baseY + 120);
+      ctx.closePath();
+      ctx.fill();
+    };
+
+    drawMistyMountain(padTop + innerH * 0.72, 240, 0.22, 1.1 + rand() * 2.0);
+    drawMistyMountain(padTop + innerH * 0.82, 190, 0.34, 3.4 + rand() * 2.0);
+
+    const drawBambooStalk = (x0, y0, angle, segLen, segs, startW) => {
+      let cx = x0;
+      let cy = y0;
+      for (let s = 0; s < segs; s++) {
+        const nx = cx + Math.sin(angle) * segLen;
+        const ny = cy - Math.cos(angle) * segLen;
+        ctx.strokeStyle = `rgba(28, 26, 24, ${0.72 - s * 0.06})`;
+        ctx.lineWidth = Math.max(2.5, startW - s * 1.1);
+        ctx.lineCap = 'round';
+        ctx.beginPath();
+        ctx.moveTo(cx, cy);
+        ctx.lineTo(nx, ny);
+        ctx.stroke();
+
+        ctx.strokeStyle = 'rgba(18, 16, 15, 0.85)';
+        ctx.lineWidth = 2.5;
+        ctx.beginPath();
+        ctx.moveTo(nx - 7, ny);
+        ctx.lineTo(nx + 7, ny);
+        ctx.stroke();
+
+        cx = nx + Math.sin(angle) * 4;
+        cy = ny - Math.cos(angle) * 4;
+        angle += 0.035;
+      }
+    };
+
+    drawBambooStalk(padX + 140, padTop + innerH - 30, 0.22, 128, 6, 9.5);
+    drawBambooStalk(padX + 95, padTop + innerH - 10, 0.34, 105, 5, 6.5);
+
+    const drawInkLeaf = (lx, ly, ang, len, wid, opacity) => {
+      ctx.save();
+      ctx.translate(lx, ly);
+      ctx.rotate(ang);
+      ctx.fillStyle = `rgba(24, 22, 20, ${opacity})`;
+      ctx.beginPath();
+      ctx.moveTo(0, 0);
+      ctx.quadraticCurveTo(len * 0.45, -wid, len, 0);
+      ctx.quadraticCurveTo(len * 0.45, wid * 0.65, 0, 0);
+      ctx.fill();
+      ctx.restore();
+    };
+
+    const leafNodes = [
+      [padX + 260, padTop + innerH - 420, 0.82],
+      [padX + 310, padTop + innerH - 560, 0.68],
+      [padX + 355, padTop + innerH - 680, 0.78],
+      [padX + 220, padTop + innerH - 310, 0.55]
+    ];
+    leafNodes.forEach(([nx, ny, op]) => {
+      drawInkLeaf(nx, ny, 0.35, 92, 13, op);
+      drawInkLeaf(nx, ny, 0.68, 108, 14, op * 0.9);
+      drawInkLeaf(nx, ny, 1.05, 78, 11, op * 0.75);
+      drawInkLeaf(nx - 14, ny + 12, -2.35, 74, 10, op * 0.6);
+    });
+
+    ctx.fillStyle = '#1d1b18';
+    ctx.font = '500 106px "Kaiti SC", "STKaiti", "Songti SC", "STSong", "Noto Serif CJK SC", serif';
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+
+    const chars = scrollChars;
+    const charX = padX + innerW * 0.68;
+    const charStartY = padTop + 210;
+    const charGap = chars.length > 6 ? 132 : 152;
+
+    chars.forEach((ch, idx) => {
+      ctx.save();
+      ctx.translate(charX + (idx % 2 === 0 ? -3 : 4), charStartY + idx * charGap);
+      ctx.rotate((idx - 1.5) * 0.015);
+      ctx.fillText(ch, 0, 0);
+      ctx.restore();
+    });
+
+    const textBottom = charStartY + (chars.length - 1) * charGap;
+
+    ctx.fillStyle = 'rgba(36, 33, 29, 0.78)';
+    ctx.font = '32px "Kaiti SC", "STKaiti", "Songti SC", serif';
+    const insc = scrollInscription;
+    for (let i = 0; i < insc.length; i++) {
+      ctx.fillText(insc[i], padX + innerW * 0.50, textBottom + 80 + i * 44);
+    }
+
+    const sealX = padX + innerW * 0.50 - 22;
+    const sealY1 = textBottom + 120 + insc.length * 44;
+    ctx.fillStyle = '#9e281d';
+    ctx.fillRect(sealX, sealY1, 44, 44);
+    ctx.fillStyle = '#dfd5c3';
+    ctx.font = '22px "Songti SC", serif';
+    ctx.fillText(scrollSealChars[0] || '清', sealX + 22, sealY1 + 14);
+    ctx.fillText(scrollSealChars[1] || '心', sealX + 22, sealY1 + 33);
+
+    const sealY2 = sealY1 + 58;
+    ctx.strokeStyle = '#9e281d';
+    ctx.lineWidth = 3;
+    ctx.strokeRect(sealX + 2, sealY2, 40, 40);
+    ctx.fillStyle = '#9e281d';
+    ctx.font = '20px "Songti SC", serif';
+    ctx.fillText(scrollSealChars[0] || '清', sealX + 22, sealY2 + 21);
+
+    ctx.restore();
+  }
+
+  function rollScroll() {
+    const pick = SCROLL_LINES[(Math.random() * SCROLL_LINES.length) | 0];
+    scrollChars = Array.from(pick[0]);
+    scrollInscription = pick[1];
+    scrollSealChars = Array.from(pick[2]);
+    scrollHangX = -0.32 + Math.random() * 0.72;
+    scrollHangY = 1.38 + Math.random() * 0.14;
+    scrollHangTilt = (Math.random() - 0.5) * 0.018;
+
+    const tex = textures.hangingScroll;
+    if (tex && tex.image && tex.image.getContext) {
+      const img = tex.image;
+      paintHangingScroll(img.getContext('2d'), img.width, img.height);
+      tex.needsUpdate = true;
+    }
+    if (typeof scrollGroup !== 'undefined' && scrollGroup) {
+      scrollGroup.position.set(scrollHangX, scrollHangY, -2.20);
+      scrollGroup.rotation.z = scrollHangTilt;
+    }
+    if (typeof VIEWS !== 'undefined' && VIEWS && VIEWS.scroll) {
+      VIEWS.scroll.pos.set(scrollHangX, scrollHangY, 1.02);
+      VIEWS.scroll.target.set(scrollHangX, scrollHangY, -2.20);
+    }
   }
 
   buildProceduralTextures();
 
-  // 辅助：在器物底部添加柔和环境遮蔽接触阴影，消除浮空感
   function addContactShadow(parent, x, y, z, scaleX, scaleZ, opacity) {
     const m = new THREE.Mesh(
       new THREE.PlaneGeometry(1, 1),
@@ -1376,7 +1620,7 @@
   }
 
   // ============================================================================
-  // 3. 构建室内茶室书房建筑空间（障子窗、聚乐土墙、榻榻米、木梁、书画挂轴、山茶青瓷瓶）
+  // 3. 室内茶室建筑空间（障子窗、聚乐土墙、榻榻米、木梁、书画挂轴）
   // ============================================================================
   const roomGroup = new THREE.Group();
   scene.add(roomGroup);
@@ -1398,27 +1642,23 @@
     metalness: 0.04
   });
 
-  // 背景土墙 (z = -2.25)
   const backWall = new THREE.Mesh(new THREE.PlaneGeometry(11.0, 6.5), wallMat);
   backWall.position.set(0, 2.2, -2.25);
   backWall.receiveShadow = true;
   roomGroup.add(backWall);
 
-  // 右侧土墙
   const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(9.0, 6.5), wallMat);
   rightWall.rotation.y = -Math.PI / 2;
   rightWall.position.set(3.8, 2.2, 0.5);
   rightWall.receiveShadow = true;
   roomGroup.add(rightWall);
 
-  // 左侧土墙与障子窗框 (x = -2.35)
   const leftWallBack = new THREE.Mesh(new THREE.PlaneGeometry(9.0, 6.5), wallMat);
   leftWallBack.rotation.y = Math.PI / 2;
   leftWallBack.position.set(-2.38, 2.2, 0.5);
   leftWallBack.receiveShadow = true;
   roomGroup.add(leftWallBack);
 
-  // 障子窗组件（半透和纸 + 桧木细窗格 + 窗外竹影）
   const shojiGroup = new THREE.Group();
   shojiGroup.position.set(-2.33, 1.62, -0.32);
   shojiGroup.rotation.y = Math.PI / 2;
@@ -1440,7 +1680,6 @@
   );
   shojiGroup.add(shojiPaperMesh);
 
-  // 桧木窗框与kumiko横竖木格（投射真实窗格光影）
   const hinokiMat = new THREE.MeshStandardMaterial({
     map: textures.walnutColor,
     color: 0x6e4f36,
@@ -1448,7 +1687,6 @@
     metalness: 0.04
   });
 
-  // 外框
   const frameThick = 0.055;
   const frameDepth = 0.06;
   const topFrame = new THREE.Mesh(new THREE.BoxGeometry(shojiW + frameThick * 2, frameThick, frameDepth), hinokiMat);
@@ -1465,7 +1703,6 @@
     shojiGroup.add(sideF);
   });
 
-  // 竖向窗棂 (6列)
   const vCols = 6;
   for (let i = 1; i < vCols; i++) {
     const x = -shojiW * 0.5 + (shojiW / vCols) * i;
@@ -1479,7 +1716,6 @@
     shojiGroup.add(bar);
   }
 
-  // 横向窗棂 (7行)
   const hRows = 7;
   for (let j = 1; j < hRows; j++) {
     const y = -shojiH * 0.5 + (shojiH / hRows) * j;
@@ -1489,7 +1725,6 @@
     shojiGroup.add(bar);
   }
 
-  // 室内榻榻米地面与深色木地板缘侧 (y = -0.36)
   const floorY = -0.36;
   const tatamiMesh = new THREE.Mesh(
     new THREE.PlaneGeometry(10.0, 9.0),
@@ -1506,7 +1741,6 @@
   tatamiMesh.receiveShadow = true;
   roomGroup.add(tatamiMesh);
 
-  // 榻榻米深青麻布缘边条（ヘリ）
   const borderMat = new THREE.MeshStandardMaterial({
     map: textures.teaCloth,
     color: 0x1f2421,
@@ -1519,7 +1753,6 @@
     roomGroup.add(bStrip);
   });
 
-  // 背景墙脚踢脚木梁、立柱与书画床之间（Tokonoma）结构
   const baseboard = new THREE.Mesh(new THREE.BoxGeometry(10.0, 0.09, 0.06), archWoodMat);
   baseboard.position.set(0, floorY + 0.045, -2.22);
   baseboard.receiveShadow = true;
@@ -1542,16 +1775,15 @@
   topLintel.castShadow = true;
   roomGroup.add(topLintel);
 
-  // --- 3.1 墙上挂轴书画（「修身养性」+ 水墨竹山 + 朱印 + 上下实木轴杆） ---
+  // 墙上书画挂轴
   const scrollGroup = new THREE.Group();
   scrollGroup.position.set(scrollHangX, scrollHangY, -2.20);
-scrollGroup.rotation.z = scrollHangTilt;
+  scrollGroup.rotation.z = scrollHangTilt;
   roomGroup.add(scrollGroup);
 
   const scrollW = 0.78;
   const scrollH = 1.56;
 
-  // 挂轴背后的微弱立体落影衬垫
   const scrollShadow = new THREE.Mesh(
     new THREE.PlaneGeometry(scrollW + 0.08, scrollH + 0.08),
     new THREE.MeshBasicMaterial({
@@ -1564,7 +1796,6 @@ scrollGroup.rotation.z = scrollHangTilt;
   scrollShadow.position.set(0.015, -0.015, -0.008);
   scrollGroup.add(scrollShadow);
 
-  // 宣纸挂轴主体（轻微自然垂挂弧度）
   const scrollGeo = new THREE.PlaneGeometry(scrollW, scrollH, 8, 24);
   const sPos = scrollGeo.attributes.position;
   for (let i = 0; i < sPos.count; i++) {
@@ -1586,7 +1817,6 @@ scrollGroup.rotation.z = scrollHangTilt;
   scrollMesh.receiveShadow = true;
   scrollGroup.add(scrollMesh);
 
-  // 上部天杆与挂绳
   const rollerMat = new THREE.MeshStandardMaterial({
     map: textures.walnutColor,
     color: 0x24150d,
@@ -1598,7 +1828,6 @@ scrollGroup.rotation.z = scrollHangTilt;
   topBar.position.set(0, scrollH * 0.5 + 0.006, 0.006);
   scrollGroup.add(topBar);
 
-  // 下部地轴（紫檀重轴 + 骨质轴头）
   const bottomRoller = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, scrollW + 0.09, 28), rollerMat);
   bottomRoller.rotation.z = Math.PI / 2;
   bottomRoller.position.set(0, -scrollH * 0.5 - 0.012, 0.014);
@@ -1617,7 +1846,6 @@ scrollGroup.rotation.z = scrollHangTilt;
     scrollGroup.add(knob);
   });
 
-  // 挂绳与铜钉
   const cordMat = new THREE.MeshBasicMaterial({ color: 0x3b2c1e });
   [-1, 1].forEach(dir => {
     const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.002, 0.002, 0.28, 6), cordMat);
@@ -1633,7 +1861,7 @@ scrollGroup.rotation.z = scrollHangTilt;
   scrollGroup.add(nailPin);
 
   // ============================================================================
-  // 4. 深色实木低茶桌与桌面器物（紫砂壶、两只青瓷茶杯、青铜三足香炉、线香、茶巾、茶罐、青瓷花瓶）
+  // 4. 实木低茶桌与桌面器物（粗陶壶承、宜兴原矿紫砂壶、羊脂白瓷品茗杯、古铜三足香炉、熟普茶汤）
   // ============================================================================
   const tableSurfaceY = 0.42;
 
@@ -1644,22 +1872,20 @@ scrollGroup.rotation.z = scrollHangTilt;
     map: textures.walnutColor,
     bumpMap: textures.walnutBump,
     bumpScale: 0.004,
-    roughnessMap: textures.walnutBump,
-    color: 0x472d1d,
-    roughness: 0.38,
-    metalness: 0.04,
-    clearcoat: 0.28,
-    clearcoatRoughness: 0.42
+    color: 0x503322,
+    roughness: 0.82,
+    metalness: 0.0,
+    clearcoat: 0.0,
+    clearcoatRoughness: 1.0,
+    envMapIntensity: 0.18
   });
 
-  // 厚重实木整板桌面 (宽 1.66m, 深 0.86m, 厚 4.6cm)
   const tableSlab = new THREE.Mesh(new THREE.BoxGeometry(1.66, 0.046, 0.86), tableWoodMat);
   tableSlab.position.set(0, tableSurfaceY - 0.023, 0.08);
   tableSlab.castShadow = true;
   tableSlab.receiveShadow = true;
   tableGroup.add(tableSlab);
 
-  // 桌底内缩牙板与四只稳重方腿
   const apronFrame = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.055, 0.72), tableWoodMat);
   apronFrame.position.set(0, tableSurfaceY - 0.068, 0.08);
   apronFrame.castShadow = true;
@@ -1682,12 +1908,11 @@ scrollGroup.rotation.z = scrollHangTilt;
     addContactShadow(tableGroup, lx, floorY + 0.002, lz, 0.24, 0.24, 0.78);
   });
 
-  // 桌面下方榻榻米大范围柔和遮蔽阴影
   addContactShadow(tableGroup, 0, floorY + 0.001, 0.08, 1.85, 1.05, 0.65);
 
-  // --- 4.1 折叠亚麻茶巾（承托紫砂壶与品茗杯） ---
+  // --- 4.1 折叠亚麻茶巾与柴烧铁胎粗陶壶承（体现陶土真实砂砾肌理） ---
   const teaClothMesh = new THREE.Mesh(
-    new THREE.BoxGeometry(0.32, 0.008, 0.20),
+    new THREE.BoxGeometry(0.36, 0.006, 0.24),
     new THREE.MeshStandardMaterial({
       map: textures.teaCloth,
       bumpMap: textures.teaCloth,
@@ -1696,27 +1921,59 @@ scrollGroup.rotation.z = scrollHangTilt;
       metalness: 0.0
     })
   );
-  teaClothMesh.position.set(-0.26, tableSurfaceY + 0.004, 0.05);
-  teaClothMesh.rotation.y = 0.06;
+  teaClothMesh.position.set(-0.22, tableSurfaceY + 0.003, 0.11);
+  teaClothMesh.rotation.y = 0.05;
   teaClothMesh.receiveShadow = true;
   teaClothMesh.castShadow = true;
   tableGroup.add(teaClothMesh);
 
-  // --- 4.2 宜兴紫砂西施/石瓢壶（位于茶桌中左，曲线圆润真实） ---
-  const teapotGroup = new THREE.Group();
-  teapotGroup.position.set(-0.29, tableSurfaceY + 0.008, 0.03);
-  teapotGroup.rotation.y = -0.38;
-  tableGroup.add(teapotGroup);
-
-  const zishaMat = new THREE.MeshStandardMaterial({
-    map: textures.zisha,
-    bumpMap: textures.zishaBump,
-    bumpScale: 0.0035,
-    roughness: 0.46,
-    metalness: 0.06
+  const terracottaMat = new THREE.MeshStandardMaterial({
+    map: textures.terracotta,
+    bumpMap: textures.terracottaBump,
+    bumpScale: 0.0045,
+    roughnessMap: textures.terracottaBump,
+    color: 0x45352c,
+    roughness: 0.84,
+    metalness: 0.03
   });
 
-  // 壶身车削曲面
+  // 粗陶浅盘壶承（承托紫砂壶）
+  const boatProfile = [
+    new THREE.Vector2(0.000, 0.000),
+    new THREE.Vector2(0.078, 0.000),
+    new THREE.Vector2(0.094, 0.006),
+    new THREE.Vector2(0.102, 0.017),
+    new THREE.Vector2(0.098, 0.018),
+    new THREE.Vector2(0.086, 0.008),
+    new THREE.Vector2(0.000, 0.007)
+  ];
+  const teaBoatMesh = new THREE.Mesh(new THREE.LatheGeometry(boatProfile, 48), terracottaMat);
+  teaBoatMesh.position.set(-0.29, tableSurfaceY + 0.006, 0.03);
+  teaBoatMesh.castShadow = true;
+  teaBoatMesh.receiveShadow = true;
+  tableGroup.add(teaBoatMesh);
+  addContactShadow(tableGroup, -0.29, tableSurfaceY + 0.0065, 0.03, 0.23, 0.23, 0.72);
+
+  // --- 4.2 宜兴原矿底槽清紫砂壶（茶汤养润包浆光泽 + 颗粒砂感 + 壶嘴指向主茶杯） ---
+  const teapotGroup = new THREE.Group();
+  const teapotRestY = tableSurfaceY + 0.013;
+  teapotGroup.position.set(-0.29, teapotRestY, 0.03);
+  teapotGroup.rotation.y = -0.36;
+  tableGroup.add(teapotGroup);
+
+  const zishaMat = new THREE.MeshPhysicalMaterial({
+    map: textures.zisha,
+    bumpMap: textures.zishaBump,
+    bumpScale: 0.0038,
+    roughnessMap: textures.zishaBump,
+    color: 0x613728,
+    roughness: 0.44,
+    metalness: 0.04,
+    clearcoat: 0.34,
+    clearcoatRoughness: 0.38,
+    reflectivity: 0.55
+  });
+
   const potProfile = [
     new THREE.Vector2(0.000, 0.002),
     new THREE.Vector2(0.042, 0.002),
@@ -1730,19 +1987,18 @@ scrollGroup.rotation.z = scrollHangTilt;
     new THREE.Vector2(0.038, 0.106),
     new THREE.Vector2(0.038, 0.098)
   ];
-  const potBody = new THREE.Mesh(new THREE.LatheGeometry(potProfile, 48), zishaMat);
+  const potBody = new THREE.Mesh(new THREE.LatheGeometry(potProfile, 52), zishaMat);
   potBody.castShadow = true;
   potBody.receiveShadow = true;
   teapotGroup.add(potBody);
 
-  // 壶盖与宝珠壶钮
   const lidProfile = [
     new THREE.Vector2(0.000, 0.114),
     new THREE.Vector2(0.040, 0.103),
     new THREE.Vector2(0.036, 0.100),
     new THREE.Vector2(0.000, 0.102)
   ];
-  const potLid = new THREE.Mesh(new THREE.LatheGeometry(lidProfile, 36), zishaMat);
+  const potLid = new THREE.Mesh(new THREE.LatheGeometry(lidProfile, 40), zishaMat);
   potLid.castShadow = true;
   teapotGroup.add(potLid);
 
@@ -1752,86 +2008,346 @@ scrollGroup.rotation.z = scrollHangTilt;
   finialBead.castShadow = true;
   teapotGroup.add(finialBead);
 
-  // 弯流壶嘴
+  // 三弯流壶嘴（局部坐标 +X 轴方向，顶端在 (0.098, 0.094, 0)）
   const spoutCurve = new THREE.CatmullRomCurve3([
     new THREE.Vector3(0.058, 0.048, 0),
     new THREE.Vector3(0.082, 0.066, 0),
     new THREE.Vector3(0.098, 0.094, 0)
   ]);
-  const spoutGeo = new THREE.TubeGeometry(spoutCurve, 20, 0.0095, 16, false);
-  const spoutMesh = new THREE.Mesh(spoutGeo, zishaMat);
+  const spoutMesh = new THREE.Mesh(new THREE.TubeGeometry(spoutCurve, 24, 0.0092, 18, false), zishaMat);
   spoutMesh.castShadow = true;
   teapotGroup.add(spoutMesh);
 
-  // 耳形壶把
+  // 壶嘴出水孔黑影与绑定在壶嘴尖端的虚拟锚点（确保倾壶时茶水100%精准从壶嘴口涌出）
+  const spoutMouthAnchor = new THREE.Object3D();
+  spoutMouthAnchor.position.set(0.099, 0.094, 0);
+  teapotGroup.add(spoutMouthAnchor);
+
   const handleCurve = new THREE.CatmullRomCurve3([
     new THREE.Vector3(-0.052, 0.086, 0),
     new THREE.Vector3(-0.096, 0.082, 0),
     new THREE.Vector3(-0.092, 0.042, 0),
     new THREE.Vector3(-0.056, 0.032, 0)
   ]);
-  const handleMesh = new THREE.Mesh(new THREE.TubeGeometry(handleCurve, 24, 0.0072, 16, false), zishaMat);
+  const handleMesh = new THREE.Mesh(new THREE.TubeGeometry(handleCurve, 28, 0.0072, 16, false), zishaMat);
   handleMesh.castShadow = true;
   teapotGroup.add(handleMesh);
 
-  addContactShadow(teapotGroup, 0, 0.001, 0, 0.17, 0.17, 0.75);
+  const teapotShadowMesh = addContactShadow(tableGroup, -0.29, tableSurfaceY + 0.0135, 0.03, 0.16, 0.16, 0.78);
 
-  // --- 4.3 两只宋式天青汝窑茶杯（内盛琥珀色熟普/乌龙茶汤 + 袅袅微弱茶气） ---
-  const celadonMat = new THREE.MeshPhysicalMaterial({
-    map: textures.celadon,
-    color: 0x9cb5ab,
-    roughness: 0.14,
-    metalness: 0.02,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.08,
-    reflectivity: 0.85
+  // --- 4.3 两只德化羊脂白瓷品茗杯 + 粗陶小杯托 + 晶莹琥珀色茶汤 ---
+  const whitePorcelainMat = new THREE.MeshPhysicalMaterial({
+    map: textures.whitePorcelain,
+    bumpMap: textures.porcelainBump,
+    bumpScale: 0.0005,
+    color: 0xf2ece2,
+    roughness: 0.22,
+    metalness: 0.0,
+    clearcoat: 0.5,
+    clearcoatRoughness: 0.16,
+    reflectivity: 0.62
+  });
+
+  // 瓷杯底足素胎圈（露胎细砂感）
+  const unglazedRimMat = new THREE.MeshStandardMaterial({
+    color: 0xd8cbb8,
+    roughness: 0.78,
+    metalness: 0.0
   });
 
   const teaLiquorMat = new THREE.MeshPhysicalMaterial({
-    color: 0x7a3812,
-    roughness: 0.05,
+    map: textures.teaLiquor,
+    color: 0xffffff,
+    emissive: new THREE.Color(0x140400),
+    emissiveIntensity: 0.12,
+    roughness: 0.17,
     metalness: 0.0,
-    clearcoat: 1.0,
-    clearcoatRoughness: 0.04,
+    clearcoat: 0.9,
+    clearcoatRoughness: 0.16,
+    reflectivity: 0.5,
+    envMapIntensity: 0.55,
     transparent: true,
-    opacity: 0.92
+    opacity: 0.97
   });
 
+  // 白瓷杯内壁曲线：随高度 h 变化的真实半径 R(h) = 0.015 + (h - 0.010) * 0.50
   const cupProfile = [
     new THREE.Vector2(0.000, 0.002),
     new THREE.Vector2(0.017, 0.002),
     new THREE.Vector2(0.019, 0.009),
     new THREE.Vector2(0.031, 0.026),
-    new THREE.Vector2(0.036, 0.048),
-    new THREE.Vector2(0.034, 0.048),
-    new THREE.Vector2(0.028, 0.026),
+    new THREE.Vector2(0.0365, 0.048),
+    new THREE.Vector2(0.0345, 0.048),
+    new THREE.Vector2(0.0285, 0.026),
     new THREE.Vector2(0.016, 0.011),
     new THREE.Vector2(0.000, 0.010)
   ];
-  const cupGeo = new THREE.LatheGeometry(cupProfile, 40);
+  const cupGeo = new THREE.LatheGeometry(cupProfile, 48);
+
+  // 粗陶小杯托曲线
+  const saucerProfile = [
+    new THREE.Vector2(0.000, 0.000),
+    new THREE.Vector2(0.032, 0.000),
+    new THREE.Vector2(0.046, 0.006),
+    new THREE.Vector2(0.043, 0.008),
+    new THREE.Vector2(0.024, 0.003),
+    new THREE.Vector2(0.000, 0.003)
+  ];
+  const saucerGeo = new THREE.LatheGeometry(saucerProfile, 36);
 
   const cupPositions = [
-    { x: -0.10, z: 0.16, yBase: tableSurfaceY },
-    { x: -0.20, z: 0.25, yBase: tableSurfaceY }
+    { x: -0.10, z: 0.16, yBase: tableSurfaceY + 0.006, initialFill: 0.18 }, // 主斟茶杯（初始浅底茶汤，收尾斟满）
+    { x: -0.20, z: 0.25, yBase: tableSurfaceY + 0.006, initialFill: 0.72 }  // 伴席品茗杯
   ];
+  const cupLiquids = [];
 
-  cupPositions.forEach(cp => {
+  function setCupLiquidLevel(liquidMesh, fill01) {
+    const f = Math.max(0.0, Math.min(1.0, fill01));
+    const h = 0.014 + f * (0.041 - 0.014);
+    const r = 0.0155 + (h - 0.011) * 0.660;
+    liquidMesh.position.y = h;
+    liquidMesh.scale.set(r, r, 1);
+  }
+
+  cupPositions.forEach((cp, idx) => {
     const cGroup = new THREE.Group();
     cGroup.position.set(cp.x, cp.yBase, cp.z);
 
-    const cupMesh = new THREE.Mesh(cupGeo, celadonMat);
+    // 粗陶杯托
+    const saucer = new THREE.Mesh(saucerGeo, terracottaMat);
+    saucer.castShadow = true;
+    saucer.receiveShadow = true;
+    cGroup.add(saucer);
+
+    // 羊脂白瓷杯体
+    const cupMesh = new THREE.Mesh(cupGeo, whitePorcelainMat);
+    cupMesh.position.y = 0.003;
     cupMesh.castShadow = true;
     cupMesh.receiveShadow = true;
     cGroup.add(cupMesh);
 
-    const teaLiquid = new THREE.Mesh(new THREE.CircleGeometry(0.032, 32), teaLiquorMat);
-    teaLiquid.rotation.x = -Math.PI / 2;
-    teaLiquid.position.y = 0.039;
-    cGroup.add(teaLiquid);
+    // 圈足露胎细环
+    const footRing = new THREE.Mesh(new THREE.RingGeometry(0.015, 0.0175, 32), unglazedRimMat);
+    footRing.rotation.x = -Math.PI / 2;
+    footRing.position.y = 0.0032;
+    cGroup.add(footRing);
 
-    addContactShadow(cGroup, 0, 0.001, 0, 0.085, 0.085, 0.72);
+    // 单位半径圆面（通过 setCupLiquidLevel 动态贴合白瓷杯内壁斜率）
+    const teaLiquid = new THREE.Mesh(new THREE.CircleGeometry(1.0, 40), teaLiquorMat);
+    teaLiquid.rotation.x = -Math.PI / 2;
+    setCupLiquidLevel(teaLiquid, cp.initialFill);
+    cupMesh.add(teaLiquid);
+
+    addContactShadow(cGroup, 0, 0.0005, 0, 0.10, 0.10, 0.74);
     tableGroup.add(cGroup);
+    cupLiquids.push(teaLiquid);
   });
+
+  // --- 4.3.1 燃尽收尾：提壶斟茶物理流体网格与落杯涟漪波纹 ---
+  const teapotHomePos = teapotGroup.position.clone();
+  const teapotHomeRotY = teapotGroup.rotation.y;
+  const pourCup = cupPositions[0];
+  // 提壶悬停位置：位于主杯正左方 (-X)，旋转设为 0，壶嘴 (+X) 自然精准对准主杯中心
+  const pourTeapot = new THREE.Vector3(pourCup.x - 0.145, tableSurfaceY + 0.105, pourCup.z);
+
+  const streamMat = new THREE.MeshPhysicalMaterial({
+    color: 0x9c3e0e,
+    emissive: new THREE.Color(0x3a1102),
+    emissiveIntensity: 0.45,
+    roughness: 0.04,
+    metalness: 0.0,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.02,
+    reflectivity: 0.95,
+    transparent: true,
+    opacity: 0.0
+  });
+
+  // 使用可实时形变的圆柱网格连接壶嘴锚点与杯中液面，呈现上粗下细的真实重力流体抛物线
+  const streamSegsY = 28;
+  const streamSegsR = 14;
+  // 自己建管状顶点：与 updateTeaStreamGeometry 的写入顺序严格一一对应。
+  // 之前复用 CylinderGeometry 会残留几十个没被改写的原始顶点（半径 1 米），
+  // 斟茶时在桌面上撑出一个茶色巨柱——就是「桌子变透明、变茶色」的根因。
+  const streamGeo = (() => {
+    const rows = streamSegsY + 1;
+    const cols = streamSegsR + 1;
+    const vCount = rows * cols;
+    const positions = new Float32Array(vCount * 3);
+    const uvs = new Float32Array(vCount * 2);
+    for (let y = 0; y < rows; y++) {
+      for (let x = 0; x < cols; x++) {
+        const i = y * cols + x;
+        uvs[i * 2] = x / streamSegsR;
+        uvs[i * 2 + 1] = y / streamSegsY;
+      }
+    }
+    const index = [];
+    for (let y = 0; y < streamSegsY; y++) {
+      for (let x = 0; x < streamSegsR; x++) {
+        const a = y * cols + x;
+        const b = a + 1;
+        const c = a + cols;
+        const d = c + 1;
+        index.push(a, c, b, b, c, d);
+      }
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geo.setIndex(index);
+    geo.computeVertexNormals();
+    return geo;
+  })();
+  const streamBaseCircle = new Float32Array((streamSegsR + 1) * 2);
+  for (let i = 0; i <= streamSegsR; i++) {
+    const a = (i / streamSegsR) * Math.PI * 2;
+    streamBaseCircle[i * 2] = Math.cos(a);
+    streamBaseCircle[i * 2 + 1] = Math.sin(a);
+  }
+  const streamMesh = new THREE.Mesh(streamGeo, streamMat);
+  streamMesh.visible = false;
+  streamMesh.frustumCulled = false;
+  scene.add(streamMesh);
+
+  // 茶流落入杯面处的琥珀色细小涟漪圈与微光点
+  const rippleGroup = new THREE.Group();
+  rippleGroup.position.set(pourCup.x, pourCup.yBase + 0.025, pourCup.z);
+  rippleGroup.visible = false;
+  tableGroup.add(rippleGroup);
+
+  // 收尾入茶：贴着液面扩散的细波纹，随镜头俯身与穿汤同步放大
+  const TEA_SURFACE_LOCAL_Y = 0.0378;
+  const teaSurfaceWorld = new THREE.Vector3(pourCup.x, pourCup.yBase + TEA_SURFACE_LOCAL_Y, pourCup.z);
+  // 俯身止于「一杯茶」中景：茶汤占画面四成，不再钻进杯口糊成一团红色
+  const diveNearPos = new THREE.Vector3(pourCup.x - 0.012, pourCup.yBase + 0.1900, pourCup.z + 0.1720);
+
+  const dipRippleGroup = new THREE.Group();
+  dipRippleGroup.position.copy(teaSurfaceWorld);
+  dipRippleGroup.position.y += 0.0004;
+  dipRippleGroup.visible = false;
+  tableGroup.add(dipRippleGroup);
+
+  const dipRingGeo = new THREE.RingGeometry(0.0050, 0.0061, 44);
+  for (let i = 0; i < 3; i++) {
+    const ring = new THREE.Mesh(dipRingGeo, new THREE.MeshBasicMaterial({
+      color: 0xffe2b8,
+      transparent: true,
+      opacity: 0,
+      depthWrite: false,
+      blending: THREE.AdditiveBlending,
+      side: THREE.DoubleSide
+    }));
+    ring.rotation.x = -Math.PI / 2;
+    dipRippleGroup.add(ring);
+  }
+
+  // 斟满后的茶汤热气：从杯口缓慢升起的一缕极淡白汽
+  const cupSteamCount = lowEnd ? 14 : 22;
+  const cupSteamGeo = new THREE.BufferGeometry();
+  const cupSteamSeed = new Float32Array(cupSteamCount * 2);
+  const cupSteamRest = new Float32Array(cupSteamCount * 3);
+  for (let i = 0; i < cupSteamCount; i++) {
+    cupSteamSeed[i * 2] = i / cupSteamCount;
+    cupSteamSeed[i * 2 + 1] = (i * 0.6180339887) % 1;
+  }
+  cupSteamGeo.setAttribute('position', new THREE.BufferAttribute(cupSteamRest, 3));
+  cupSteamGeo.setAttribute('aSeed', new THREE.BufferAttribute(cupSteamSeed, 2));
+  const cupSteamUniforms = {
+    uTime: { value: 0 },
+    uOrigin: { value: new THREE.Vector3(pourCup.x, pourCup.yBase + 0.038, pourCup.z) },
+    uActive: { value: 0 },
+    uTex: { value: textures.radialGlow }
+  };
+  const cupSteamMat = new THREE.ShaderMaterial({
+    uniforms: cupSteamUniforms,
+    vertexShader: `
+      uniform float uTime;
+      uniform vec3 uOrigin;
+      uniform float uActive;
+      attribute vec2 aSeed;
+      varying float vAlpha;
+      void main() {
+        float life = fract(aSeed.x + uTime * 0.085);
+        float rise = life * 0.095;
+        float driftX = sin(uTime * 0.35 + aSeed.y * 6.283) * 0.004 * life + life * 0.010;
+        float driftZ = cos(uTime * 0.28 + aSeed.y * 6.283) * 0.003 * life + life * 0.006;
+        vec3 p = uOrigin + vec3(driftX, rise, driftZ);
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = (10.0 + life * 22.0) * (1.0 / -mv.z);
+        vAlpha = uActive * sin(life * 3.14159) * 0.13;
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D uTex;
+      varying float vAlpha;
+      void main() {
+        vec4 t = texture2D(uTex, gl_PointCoord);
+        if (t.a * vAlpha < 0.004) discard;
+        gl_FragColor = vec4(vec3(0.94, 0.92, 0.88), t.a * vAlpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false
+  });
+  const cupSteam = new THREE.Points(cupSteamGeo, cupSteamMat);
+  cupSteam.frustumCulled = false;
+  cupSteam.renderOrder = 6;
+  scene.add(cupSteam);
+
+  const rippleRing1 = new THREE.Mesh(
+    new THREE.RingGeometry(0.0022, 0.0038, 32),
+    new THREE.MeshBasicMaterial({
+      color: 0xf7c97e,
+      transparent: true,
+      opacity: 0.0,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
+  );
+  rippleRing1.rotation.x = -Math.PI / 2;
+  rippleGroup.add(rippleRing1);
+
+  const rippleRing2 = new THREE.Mesh(
+    new THREE.RingGeometry(0.0045, 0.0062, 32),
+    new THREE.MeshBasicMaterial({
+      color: 0xeba854,
+      transparent: true,
+      opacity: 0.0,
+      side: THREE.DoubleSide,
+      depthWrite: false
+    })
+  );
+  rippleRing2.rotation.x = -Math.PI / 2;
+  rippleGroup.add(rippleRing2);
+
+  const spoutWorldTmp = new THREE.Vector3();
+
+  function updateTeaStreamGeometry(spoutPos, hitPos, elapsedT, flowStrength) {
+    const posAttr = streamGeo.attributes.position;
+    let idx = 0;
+    for (let yIdx = 0; yIdx <= streamSegsY; yIdx++) {
+      const s = yIdx / streamSegsY; // 0: 壶嘴口 -> 1: 落杯液面
+      // 抛物线初速外抛 + 重力加速下落
+      const arcForward = Math.sin(s * Math.PI) * 0.011 * flowStrength;
+      const cx = spoutPos.x + (hitPos.x - spoutPos.x) * s + arcForward;
+      const cy = spoutPos.y + (hitPos.y - spoutPos.y) * Math.pow(s, 1.38);
+      const cz = spoutPos.z + (hitPos.z - spoutPos.z) * s;
+
+      // 流体受重力拉伸变细 + 极细微表面张力波动
+      const flutter = 1.0 + 0.07 * Math.sin(s * 20.0 - elapsedT * 36.0);
+      const radius = (0.0025 * (1.0 - 0.42 * s)) * flutter * Math.max(0.25, flowStrength);
+
+      for (let rIdx = 0; rIdx <= streamSegsR; rIdx++) {
+        const ux = streamBaseCircle[rIdx * 2];
+        const uz = streamBaseCircle[rIdx * 2 + 1];
+        posAttr.setXYZ(idx++, cx + ux * radius, cy, cz + uz * radius);
+      }
+    }
+    posAttr.needsUpdate = true;
+    streamGeo.computeVertexNormals();
+  }
 
   // --- 4.4 锡制/黑陶小茶罐（桌左后方，平衡构图） ---
   const caddyGroup = new THREE.Group();
@@ -1857,7 +2373,6 @@ scrollGroup.rotation.z = scrollHangTilt;
   caddyMesh.receiveShadow = true;
   caddyGroup.add(caddyMesh);
 
-  // 茶罐黄铜腰线点缀
   const caddyBrassRing = new THREE.Mesh(
     new THREE.CylinderGeometry(0.0355, 0.0355, 0.003, 32),
     new THREE.MeshStandardMaterial({ color: 0xb89054, metalness: 0.85, roughness: 0.28 })
@@ -1866,7 +2381,17 @@ scrollGroup.rotation.z = scrollHangTilt;
   caddyGroup.add(caddyBrassRing);
   addContactShadow(caddyGroup, 0, 0.001, 0, 0.11, 0.11, 0.72);
 
-  // --- 4.5 左后方高颈青瓷胆瓶与山茶竹枝（呼应墙上书画） ---
+  // --- 4.5 左后方高颈粉青汝窑胆瓶与山茶竹枝 ---
+  const celadonMat = new THREE.MeshPhysicalMaterial({
+    map: textures.celadon,
+    color: 0x9cb5ab,
+    roughness: 0.14,
+    metalness: 0.02,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.08,
+    reflectivity: 0.85
+  });
+
   const vaseGroup = new THREE.Group();
   vaseGroup.position.set(-0.62, tableSurfaceY, -0.22);
   tableGroup.add(vaseGroup);
@@ -1888,7 +2413,6 @@ scrollGroup.rotation.z = scrollHangTilt;
   vaseGroup.add(vaseMesh);
   addContactShadow(vaseGroup, 0, 0.001, 0, 0.16, 0.16, 0.75);
 
-  // 瓶中斜插的一枝清瘦山茶木枝与绿叶白蕊
   const branchMat = new THREE.MeshStandardMaterial({ color: 0x332419, roughness: 0.85 });
   const branchCurve = new THREE.CatmullRomCurve3([
     new THREE.Vector3(0.0, 0.22, 0.0),
@@ -1936,7 +2460,6 @@ scrollGroup.rotation.z = scrollHangTilt;
     vaseGroup.add(lf);
   });
 
-  // 含苞待放的白山茶花蕾
   const budMesh = new THREE.Mesh(
     new THREE.SphereGeometry(0.011, 16, 16),
     new THREE.MeshStandardMaterial({ color: 0xe8dfd1, roughness: 0.55 })
@@ -1946,7 +2469,7 @@ scrollGroup.rotation.z = scrollHangTilt;
   vaseGroup.add(budMesh);
 
   // ============================================================================
-  // 5. 核心主角：右前方古青铜三足双耳香炉 + 真实香灰 + 正在燃烧的线香 + 袅袅青烟
+  // 5. 核心主角：古青铜三足双耳香炉 + 真实香灰 + 同步缩短燃烧线香 + 稀疏真实掉灰
   // ============================================================================
   const sceneRefs = {
     censerX: 0.26,
@@ -1954,7 +2477,7 @@ scrollGroup.rotation.z = scrollHangTilt;
     censerZ: 0.17,
     ashSurfaceY: tableSurfaceY + 0.106,
     stickFullLen: 0.215, // 21.5cm 真实线香露出长度
-    stickMinLen: 0.016,
+    stickMinLen: 0.004,
     currentTipWorld: new THREE.Vector3(0.26, tableSurfaceY + 0.32, 0.17)
   };
 
@@ -1974,7 +2497,6 @@ scrollGroup.rotation.z = scrollHangTilt;
     clearcoatRoughness: 0.35
   });
 
-  // 宣德炉式青铜三足炉身（外径约 16cm，炉口有真实厚度与内壁）
   const censerProfile = [
     new THREE.Vector2(0.000, 0.022),
     new THREE.Vector2(0.042, 0.022),
@@ -1996,7 +2518,6 @@ scrollGroup.rotation.z = scrollHangTilt;
   censerBody.receiveShadow = true;
   censerGroup.add(censerBody);
 
-  // 三只饱满乳足
   for (let i = 0; i < 3; i++) {
     const ang = (i * Math.PI * 2) / 3 + Math.PI / 6;
     const footProfile = [
@@ -2017,10 +2538,8 @@ scrollGroup.rotation.z = scrollHangTilt;
     addContactShadow(censerGroup, Math.cos(ang) * r, 0.001, Math.sin(ang) * r, 0.055, 0.055, 0.85);
   }
 
-  // 香炉整体底部柔和遮蔽阴影
   addContactShadow(censerGroup, 0, 0.0015, 0, 0.21, 0.21, 0.68);
 
-  // 朝天双耳（桥耳/冲天耳造型）
   [-1, 1].forEach(dir => {
     const earCurve = new THREE.CatmullRomCurve3([
       new THREE.Vector3(dir * 0.072, 0.096, 0),
@@ -2037,8 +2556,6 @@ scrollGroup.rotation.z = scrollHangTilt;
 
   // 炉内真实香灰床（高分段顶点起伏 + 中心插香微凹压痕）
   const ashRadius = 0.0695;
-  const ashGeo = new THREE.CircleGeometry(ashRadius, 64, 16);
-  // CircleGeometry 默认只有外圈顶点，我们改用 PlaneGeometry 极坐标映射或细分网格以获得细腻内部起伏
   const ashBedGeo = new THREE.RingGeometry(0.0001, ashRadius, 64, 18);
   ashBedGeo.rotateX(-Math.PI / 2);
   const ashPos = ashBedGeo.attributes.position;
@@ -2047,7 +2564,6 @@ scrollGroup.rotation.z = scrollHangTilt;
     const vz = ashPos.getZ(i);
     const dist = Math.sqrt(vx * vx + vz * vz);
     const normR = dist / ashRadius;
-    // 整体微隆，插香根部有一圈极小的自然堆积与微凹
     const dome = Math.cos(normR * Math.PI * 0.5) * 0.0055;
     const ripples = Math.sin(dist * 210.0) * 0.00045 + Math.sin(vx * 95.0 + vz * 110.0) * 0.0006;
     const rootIndent = -Math.exp(-dist * dist * 18000.0) * 0.0018;
@@ -2090,15 +2606,13 @@ scrollGroup.rotation.z = scrollHangTilt;
     censerGroup.add(piece);
   });
 
-  // --- 5.1 照片级真实线香（直径 2.4mm、米棕香粉颗粒质感、轻微自然弯曲、顶端炭化+火头+微卷白灰） ---
+  // --- 5.1 照片级真实线香（直径 2.5mm、沉檀木粉颗粒质感、自然插香倾角、顶端炭化火头+微卷白灰） ---
   const incenseAnchor = new THREE.Group();
   incenseAnchor.position.set(sceneRefs.censerX, sceneRefs.ashSurfaceY, sceneRefs.censerZ);
-  // 自然插香倾角（绝不死板垂直）
   incenseAnchor.rotation.z = -0.042;
   incenseAnchor.rotation.x = 0.024;
   scene.add(incenseAnchor);
 
-  // 根部香灰微掩小丘（让线香底端自然埋入灰中）
   const rootMound = new THREE.Mesh(
     new THREE.ConeGeometry(0.0038, 0.0032, 16),
     ashBedMesh.material
@@ -2106,17 +2620,16 @@ scrollGroup.rotation.z = scrollHangTilt;
   rootMound.position.y = 0.0012;
   incenseAnchor.add(rootMound);
 
-  // 香体网格（单位高度 1.0，底部在 y=0，带有极其微妙的自然有机弯曲）
-  const stickRadius = 0.00125; // 直径 2.5mm
+  // 保持单位圆柱顶面圆心严格在 (0, 1, 0)，确保 burningTipGroup 与缩放后的香体顶端严丝合缝对齐
+  const stickRadius = 0.00125;
   const stickGeo = new THREE.CylinderGeometry(stickRadius * 0.96, stickRadius, 1.0, 20, 32);
   stickGeo.translate(0, 0.5, 0);
   const stPos = stickGeo.attributes.position;
   for (let i = 0; i < stPos.count; i++) {
     const py = stPos.getY(i); // 0 .. 1
-    const organicBendX = Math.sin(py * Math.PI) * 0.0011;
-    const organicBendZ = Math.sin(py * Math.PI * 1.5) * 0.0006;
-    stPos.setX(i, stPos.getX(i) + organicBendX);
-    stPos.setZ(i, stPos.getZ(i) + organicBendZ);
+    const arch = Math.sin(py * Math.PI); // 0 与 1 两端严格为 0，中段微弯
+    stPos.setX(i, stPos.getX(i) + arch * 0.00085);
+    stPos.setZ(i, stPos.getZ(i) + arch * 0.00045);
   }
   stickGeo.computeVertexNormals();
 
@@ -2134,16 +2647,11 @@ scrollGroup.rotation.z = scrollHangTilt;
   incenseStickMesh.scale.y = sceneRefs.stickFullLen;
   incenseAnchor.add(incenseStickMesh);
 
-  // 烟必须从真正的香头升起：取香体顶端的世界坐标（含插香倾角与自然弯曲）
-  incenseAnchor.updateMatrixWorld(true);
-  const stickTipWorld = new THREE.Vector3(0, 1, 0).applyMatrix4(incenseStickMesh.matrixWorld);
-
-  // 顶端燃烧结构（紧随香体顶端）
+  // 顶端燃烧结构（紧随香体顶端下降）
   const burningTipGroup = new THREE.Group();
   burningTipGroup.position.y = sceneRefs.stickFullLen;
   incenseAnchor.add(burningTipGroup);
 
-  // 1) 炭化黑段与极细暗红过渡圈 + 几毫米橙红余烬火头（一体式高精度着色器，拒绝大光球）
   const emberTipUniforms = {
     uTime: { value: 0 },
     uPulse: { value: 1.0 }
@@ -2174,13 +2682,11 @@ scrollGroup.rotation.z = scrollHangTilt;
       }
 
       void main() {
-        // h: 0.0(下方与香体交界) -> 1.0(上方与白灰交界)
         float h = clamp(vPos.y / 0.0058, 0.0, 1.0);
         float angle = atan(vPos.z, vPos.x);
         float grain = hash(vec2(floor(angle * 18.0), floor(h * 32.0)));
         float wave = sin(angle * 5.0 + uTime * 1.8) * 0.03;
 
-        // 下部 0.0~0.42 为焦黑炭化段，中部 0.42~0.56 为极细暗红环，上部 0.56~0.96 为炽热橙红火头
         vec3 rawWood = vec3(0.42, 0.32, 0.22);
         vec3 blackChar = vec3(0.06, 0.05, 0.045);
         vec3 darkCrimson = vec3(0.48, 0.05, 0.01);
@@ -2196,7 +2702,6 @@ scrollGroup.rotation.z = scrollHangTilt;
         col = mix(col, glowingEmber, hotZoneMask * (0.82 + 0.18 * grain));
         col = mix(col, hotCore, pow(hotZoneMask, 2.6) * (0.65 + 0.35 * grain));
 
-        // 表面细微灰斑覆盖在火头表面（真实线香火头表面的薄灰壳感）
         float ashFleck = smoothstep(0.74, 0.92, grain) * smoothstep(0.60, 0.85, h);
         col = mix(col, vec3(0.35, 0.32, 0.30), ashFleck * 0.55);
 
@@ -2208,15 +2713,15 @@ scrollGroup.rotation.z = scrollHangTilt;
   const emberTipMesh = new THREE.Mesh(emberTipGeo, emberTipMat);
   burningTipGroup.add(emberTipMesh);
 
-  // 2) 火头最顶端极小、轻微卷曲的灰白余灰帽（约 2.6mm 高）
+  // 火头最顶端轻微卷曲的灰白余灰帽（约 2.8mm 高）
   const ashCapGeo = new THREE.CylinderGeometry(stickRadius * 0.68, stickRadius * 0.86, 0.0028, 20, 10);
   ashCapGeo.translate(0, 0.0014, 0);
   const acPos = ashCapGeo.attributes.position;
   for (let i = 0; i < acPos.count; i++) {
     const py = acPos.getY(i);
     const ratio = py / 0.0028;
-    const curlX = ratio * ratio * 0.00055;
-    const curlZ = ratio * ratio * -0.00025;
+    const curlX = ratio * ratio * 0.00052;
+    const curlZ = ratio * ratio * -0.00024;
     acPos.setX(i, acPos.getX(i) + curlX);
     acPos.setZ(i, acPos.getZ(i) + curlZ);
   }
@@ -2237,33 +2742,41 @@ scrollGroup.rotation.z = scrollHangTilt;
   ashCapMesh.position.y = 0.0056;
   burningTipGroup.add(ashCapMesh);
 
-  // 3) 极其克制的微距火头柔光晕（直径仅约 1.2cm，绝不变成假大光球）
+  // 青烟与掉灰的精确发射原点（绑定在火头与灰帽交界处）
+  const smokeEmitSocket = new THREE.Object3D();
+  smokeEmitSocket.position.set(0, 0.0062, 0);
+  burningTipGroup.add(smokeEmitSocket);
+
   const emberMicroGlow = new THREE.Sprite(
     new THREE.SpriteMaterial({
       map: textures.radialGlow,
       color: 0xff5418,
       transparent: true,
-      opacity: 0.72,
+      opacity: 0.68,
       blending: THREE.AdditiveBlending,
       depthWrite: false
     })
   );
   emberMicroGlow.position.set(0, 0.0044, 0);
-  emberMicroGlow.scale.set(0.020, 0.020, 1);
+  emberMicroGlow.scale.set(0.019, 0.019, 1);
   burningTipGroup.add(emberMicroGlow);
 
-  // 余烬微弱近场点光源（仅轻微照亮青烟根部与炉口边缘）
-  const emberPointLight = new THREE.PointLight(0xff5b1f, 0.65, 0.60, 2.0);
+  const emberPointLight = new THREE.PointLight(0xff6a2a, 0.22, 0.26, 2.0);
   emberPointLight.position.set(0, 0.005, 0);
   burningTipGroup.add(emberPointLight);
 
+  incenseAnchor.updateMatrixWorld(true);
+  const stickTipWorld = new THREE.Vector3();
+  smokeEmitSocket.getWorldPosition(stickTipWorld);
+
   // ============================================================================
-  // 6. 照片级真实蓝灰色线香青烟（底部极细垂直层流 -> 向上渐宽卷曲 -> 被冷白窗光照亮消散）
+  // 6. 照片级冷灰白线香青烟（香头极细处升起 -> 底部层流 -> 向上丝缕断裂与缓慢湍流，绝非直线）
   // ============================================================================
   const smokeUniforms = {
     uTime: { value: 0 },
-    uOrigin: { value: stickTipWorld.clone().add(new THREE.Vector3(0, 0.004, 0)) },
-    uEmberPulse: { value: 1.0 }
+    uOrigin: { value: stickTipWorld.clone() },
+    uEmberPulse: { value: 1.0 },
+    uOpacityScale: { value: 1.0 }
   };
 
   const smokeVertexShader = `
@@ -2304,33 +2817,35 @@ scrollGroup.rotation.z = scrollHangTilt;
       float plumeHeight = 1.28;
       float yOffset = h * plumeHeight;
 
-      // 物理层流与湍流过渡：底部 0~0.20 几乎垂直上升，随后向右侧缓慢漂移并产生涡旋卷曲
-      float curlStart = smoothstep(0.04, 0.26, h);
-      float curlAmp = smoothstep(0.06, 0.90, h);
-      float t = uTime * 0.38 + aLayer * 1.047;
+      // 底部 0~0.16 为纤细层流（但带柔和呼吸曲率，绝不死板笔直），向上逐渐进入缓慢涡旋湍流
+      float laminarBendX = sin(h * 4.2 - uTime * 0.55) * 0.0085 * smoothstep(0.008, 0.18, h);
+      float laminarBendZ = cos(h * 3.8 - uTime * 0.48) * 0.0065 * smoothstep(0.008, 0.18, h);
 
-      // 受左侧窗户微弱冷空气对流影响，整柱缓慢摆荡并向右后方漂移
-      float swayX = sin(uTime * 0.52 + h * 3.1) * pow(h, 1.25) * 0.050;
-      float swayZ = cos(uTime * 0.43 + h * 2.4) * pow(h, 1.30) * 0.032;
-      float driftX = pow(h, 1.55) * 0.09 + sin(uTime * 0.19) * pow(h, 1.8) * 0.05 + swayX;
-      float driftZ = pow(h, 1.60) * -0.045 + swayZ;
+      float curlStart = smoothstep(0.05, 0.28, h);
+      float curlAmp = smoothstep(0.06, 0.92, h);
+      float t = uTime * 0.34 + aLayer * 1.047;
 
-      float n1 = noise2D(vec2(h * 4.6 - uTime * 0.45, aLayer * 2.1 + uTime * 0.10)) * 2.0 - 1.0;
-      float n2 = noise2D(vec2(h * 10.2 - uTime * 0.78, aLayer * 4.7 - uTime * 0.18)) * 2.0 - 1.0;
+      // 受左侧窗户微弱冷空气对流影响，整柱缓慢蜿蜒摆荡并向右后方漂移
+      float swayX = sin(uTime * 0.46 + h * 3.2) * pow(h, 1.22) * 0.058;
+      float swayZ = cos(uTime * 0.39 + h * 2.5) * pow(h, 1.28) * 0.036;
+      float driftX = pow(h, 1.50) * 0.095 + sin(uTime * 0.18) * pow(h, 1.75) * 0.052 + swayX + laminarBendX;
+      float driftZ = pow(h, 1.55) * -0.048 + swayZ + laminarBendZ;
 
-      float swirlX = (sin(h * 8.5 - t * 2.2) * 0.045 + sin(h * 17.0 - t * 3.5 + aLayer) * 0.020 + n1 * 0.050) * curlStart * curlAmp;
-      float swirlZ = (cos(h * 7.8 - t * 2.0 + aLayer) * 0.040 + cos(h * 15.5 - t * 3.1) * 0.018 + n2 * 0.045) * curlStart * curlAmp;
+      float n1 = noise2D(vec2(h * 4.5 - uTime * 0.40, aLayer * 2.1 + uTime * 0.09)) * 2.0 - 1.0;
+      float n2 = noise2D(vec2(h * 9.8 - uTime * 0.68, aLayer * 4.7 - uTime * 0.15)) * 2.0 - 1.0;
 
-      // 香头几厘米的极细抖动，避免从火点起就是一条直线
-      float microX = sin(h * 46.0 - uTime * 1.9 + aLayer) * 0.0024 * smoothstep(0.0, 0.10, h);
-      float microZ = cos(h * 41.0 - uTime * 1.6) * 0.0018 * smoothstep(0.0, 0.10, h);
-      swirlX += microX;
-      swirlZ += microZ;
+      // 不同丝带层在中高段轻微分离交织，形成立体体积云缕
+      float layerSpread = smoothstep(0.18, 0.85, h) * 0.022;
+      float spreadX = sin(aLayer * 2.094 + h * 5.2 - uTime * 0.42) * layerSpread;
+      float spreadZ = cos(aLayer * 2.094 + h * 4.8 - uTime * 0.38) * layerSpread;
 
-      // 宽度包络：火头起始处极细（半宽约 1.4mm），向上自然扩散成轻柔云缕
-      float halfWidth = mix(0.0042, 0.082, pow(h, 1.45)) * (1.0 + 0.16 * sin(h * 11.0 - uTime * 0.9 + aLayer));
+      float swirlX = (sin(h * 8.2 - t * 2.0) * 0.048 + sin(h * 16.5 - t * 3.2 + aLayer) * 0.022 + n1 * 0.054) * curlStart * curlAmp + spreadX;
+      float swirlZ = (cos(h * 7.5 - t * 1.85 + aLayer) * 0.042 + cos(h * 15.0 - t * 2.9) * 0.019 + n2 * 0.048) * curlStart * curlAmp + spreadZ;
 
-      float angle = aLayer * 0.785398 + h * 2.4 + sin(uTime * 0.24 + h * 3.5) * 0.4;
+      // 宽度包络：火头起始处极细（半径仅约 1.5mm），向上自然扩散成轻柔云缕
+      float halfWidth = mix(0.0028, 0.092, pow(h, 1.38)) * (1.0 + 0.18 * sin(h * 10.5 - uTime * 0.82 + aLayer));
+
+      float angle = aLayer * 0.785398 + h * 2.5 + sin(uTime * 0.22 + h * 3.4) * 0.42;
       vec3 sideVec = vec3(cos(angle), 0.0, sin(angle));
 
       float centeredX = (uv.x - 0.5) * 2.0;
@@ -2344,6 +2859,7 @@ scrollGroup.rotation.z = scrollHangTilt;
   const smokeFragmentShader = `
     uniform float uTime;
     uniform float uEmberPulse;
+    uniform float uOpacityScale;
 
     varying vec2 vUv;
     varying float vHeight;
@@ -2380,48 +2896,46 @@ scrollGroup.rotation.z = scrollHangTilt;
       float h = vHeight;
       float x = vUv.x;
 
-      vec2 flowUv = vec2(x * 3.4 + vLayer * 1.71, h * 6.5 - uTime * 0.40);
+      vec2 flowUv = vec2(x * 3.2 + vLayer * 1.71, h * 6.2 - uTime * 0.36);
       float nA = fbm(flowUv);
-      float nB = fbm(vec2(x * 7.2 - nA * 1.45 + vLayer * 3.1, h * 13.0 - uTime * 0.66));
+      float nB = fbm(vec2(x * 6.8 - nA * 1.50 + vLayer * 3.1, h * 12.5 - uTime * 0.58));
 
-      // 丝缕内部扭曲轴线：底部极其凝聚纤细，向上分裂为轻薄交织的丝绸卷曲状
-      float warpCenter = 0.5 + (nA - 0.5) * 0.46 * smoothstep(0.04, 0.38, h);
+      // 丝缕内部扭曲轴线：底部极其凝聚纤细，向上分裂为双股交织与断裂云雾
+      float warpCenter = 0.5 + (nA - 0.5) * 0.52 * smoothstep(0.02, 0.34, h);
       float dist = abs(x - warpCenter);
-      float edgeMask = smoothstep(0.49, 0.02, dist);
+      float edgeMask = smoothstep(0.49, 0.03, dist);
 
-      // 底部细丝核心 + 上部双股缠绕涡旋丝缕
-      float laminarCore = exp(-pow((x - warpCenter) / mix(0.095, 0.30, smoothstep(0.0, 0.35, h)), 2.0));
-      float secondaryStrand = exp(-pow((x - (0.5 - (nB - 0.5) * 0.42)) / 0.16, 2.0)) * smoothstep(0.10, 0.38, h);
-      float wispyVeil = smoothstep(0.22, 0.80, nB * 0.6 + nA * 0.4) * edgeMask;
+      float laminarCore = exp(-pow((x - warpCenter) / mix(0.082, 0.28, smoothstep(0.0, 0.32, h)), 2.0));
+      float secondaryStrand = exp(-pow((x - (0.5 - (nB - 0.5) * 0.44)) / 0.15, 2.0)) * smoothstep(0.09, 0.36, h);
+      float wispyVeil = smoothstep(0.24, 0.82, nB * 0.62 + nA * 0.38) * edgeMask;
 
-      float structure = mix(laminarCore, max(laminarCore * 0.65 + secondaryStrand * 0.55, wispyVeil), smoothstep(0.08, 0.32, h));
+      float structure = mix(laminarCore, max(laminarCore * 0.58 + secondaryStrand * 0.54, wispyVeil), smoothstep(0.07, 0.30, h));
 
-      float fadeIn = smoothstep(0.0, 0.005, h);
-      float fadeOut = pow(1.0 - smoothstep(0.22, 0.98, h), 1.55);
-      float baseDensity = mix(1.20, 0.42, smoothstep(0.0, 0.85, h));
+      float fadeIn = smoothstep(0.0, 0.004, h);
+      float fadeOut = pow(1.0 - smoothstep(0.20, 0.98, h), 1.58);
+      float baseDensity = mix(0.88, 0.30, smoothstep(0.0, 0.85, h));
 
-      float alpha = structure * fadeIn * fadeOut * baseDensity;
+      // 向上真实丝缕断裂：在中高段形成自然空隙与云团呼吸感
+      float breakupField = fbm(vec2(h * 7.8 - uTime * 0.32, vLayer * 2.3 + x * 2.2));
+      float breakupMask = mix(1.0, smoothstep(0.06, 0.52, breakupField + (1.0 - h) * 0.26), smoothstep(0.18, 0.62, h));
 
-      // 丝缕断裂：低频团块 + 高频细纹，避免整条烟像一根实心白线
-      float breakup = smoothstep(0.16, 0.62, nA * 0.62 + nB * 0.52 + (1.0 - h) * 0.20);
-      alpha *= mix(0.62, 1.0, breakup);
-
+      float alpha = structure * fadeIn * fadeOut * baseDensity * breakupMask * uOpacityScale;
       if (alpha < 0.002) discard;
 
-      // 真实瑞利散射蓝灰色烟雾：根部几毫米受火头暖光映照，主体受冷窗光散射
-      vec3 emberColor = vec3(1.28, 0.46, 0.14) * uEmberPulse;
-      vec3 warmAsh = vec3(0.62, 0.59, 0.53);
-      vec3 coolAsh = vec3(0.48, 0.52, 0.59);
-      float coolMix = smoothstep(0.06, 0.62, h);
-      float emberFade = exp(-h * 21.0);
-      vec3 smokeColor = mix(warmAsh, coolAsh, coolMix);
-      smokeColor = mix(smokeColor, emberColor, emberFade * 0.75);
-      smokeColor += vec3(0.030, 0.036, 0.045) * pow(nB, 2.0) + (nB - 0.5) * vec3(0.02, 0.025, 0.03);
-      gl_FragColor = vec4(smokeColor, clamp(alpha, 0.0, 0.76));
+      // 冷灰白丁达尔散射色调：根部极微弱受火头暖光映照，主体为清冷灰白青烟
+      vec3 emberColor = vec3(1.18, 0.44, 0.14) * uEmberPulse;
+      vec3 lowerAshWhite = vec3(0.50, 0.505, 0.52);
+      vec3 upperCoolMist = vec3(0.40, 0.44, 0.50);
+      float coolMix = smoothstep(0.04, 0.55, h);
+      float emberFade = exp(-h * 26.0);
+      vec3 smokeColor = mix(lowerAshWhite, upperCoolMist, coolMix);
+      smokeColor = mix(smokeColor, emberColor, emberFade * 0.65);
+      smokeColor += vec3(0.04, 0.045, 0.055) * pow(nB, 2.0);
+
+      gl_FragColor = vec4(smokeColor, clamp(alpha, 0.0, 0.30));
     }
   `;
 
-  // 合并 4 条交叉丝带，一次 draw call 绘制整柱烟
   function createRibbonGeometry(ribbonCount, segX, segY) {
     const base = new THREE.PlaneGeometry(1, 1, segX, segY);
     const vCount = base.attributes.position.count;
@@ -2456,19 +2970,19 @@ scrollGroup.rotation.z = scrollHangTilt;
     depthWrite: false,
     side: THREE.DoubleSide
   });
-  const smokeMesh = new THREE.Mesh(createRibbonGeometry(4, 18, 140), smokeMaterial);
+  const smokeMesh = new THREE.Mesh(createRibbonGeometry(4, lowEnd ? 14 : 18, lowEnd ? 96 : 140), smokeMaterial);
   smokeMesh.frustumCulled = false;
   smokeMesh.renderOrder = 8;
   scene.add(smokeMesh);
 
-  // 高处极淡的散佚烟气，补上消散段
-  const wispCount = 42;
+  // 高处极淡的散佚冷灰白烟气
+  const wispCount = lowEnd ? 24 : 40;
   const wispGeo = new THREE.BufferGeometry();
   const wispPos = new Float32Array(wispCount * 3);
   const wispSeed = new Float32Array(wispCount * 2);
   for (let i = 0; i < wispCount; i++) {
     wispPos[i * 3] = stickTipWorld.x;
-    wispPos[i * 3 + 1] = stickTipWorld.y + 0.004;
+    wispPos[i * 3 + 1] = stickTipWorld.y;
     wispPos[i * 3 + 2] = stickTipWorld.z;
     wispSeed[i * 2] = i / wispCount;
     wispSeed[i * 2 + 1] = (i * 1.6180339) % 1;
@@ -2479,24 +2993,26 @@ scrollGroup.rotation.z = scrollHangTilt;
     uniforms: {
       uTime: smokeUniforms.uTime,
       uOrigin: smokeUniforms.uOrigin,
+      uOpacityScale: smokeUniforms.uOpacityScale,
       uTex: { value: textures.radialGlow }
     },
     vertexShader: `
       uniform float uTime;
       uniform vec3 uOrigin;
+      uniform float uOpacityScale;
       attribute vec2 aSeed;
       varying float vAlpha;
       void main() {
-        float life = fract(aSeed.x + uTime * 0.045);
-        float h = 0.35 + life * 0.8;
+        float life = fract(aSeed.x + uTime * 0.042);
+        float h = 0.34 + life * 0.80;
         float y = h * 1.28;
-        float driftX = pow(h, 1.55) * 0.16 + sin(uTime * 0.2 + aSeed.y * 6.283) * (0.02 + life * 0.06);
-        float driftZ = pow(h, 1.60) * -0.065 + cos(uTime * 0.18 + aSeed.y * 6.283) * (0.015 + life * 0.045);
+        float driftX = pow(h, 1.50) * 0.16 + sin(uTime * 0.2 + aSeed.y * 6.283) * (0.02 + life * 0.06);
+        float driftZ = pow(h, 1.55) * -0.065 + cos(uTime * 0.18 + aSeed.y * 6.283) * (0.015 + life * 0.045);
         vec3 p = uOrigin + vec3(driftX, y, driftZ);
         vec4 mv = modelViewMatrix * vec4(p, 1.0);
         gl_Position = projectionMatrix * mv;
-        gl_PointSize = (30.0 + life * 95.0) * (1.0 / -mv.z);
-        vAlpha = sin(life * 3.1415926) * 0.055;
+        gl_PointSize = (30.0 + life * 92.0) * (1.0 / -mv.z);
+        vAlpha = sin(life * 3.1415926) * 0.052 * uOpacityScale;
       }
     `,
     fragmentShader: `
@@ -2504,7 +3020,7 @@ scrollGroup.rotation.z = scrollHangTilt;
       varying float vAlpha;
       void main() {
         vec4 t = texture2D(uTex, gl_PointCoord);
-        gl_FragColor = vec4(vec3(0.57, 0.61, 0.67), t.a * vAlpha);
+        gl_FragColor = vec4(vec3(0.62, 0.66, 0.72), t.a * vAlpha);
       }
     `,
     transparent: true,
@@ -2516,17 +3032,108 @@ scrollGroup.rotation.z = scrollHangTilt;
   wisps.renderOrder = 7;
   scene.add(wisps);
 
+  // --- 6.1 香头掉灰：真实的香灰是烧透的纸灰，成片卷曲、偶尔剥落；
+  // 极稀疏、匀速终端速度下落、带空气飘移与翻滚，落到炉口灰面后淡出。 ---
+  const ashFlakeCount = lowEnd ? 4 : 6;
+  const ashFlakeGeo = new THREE.BufferGeometry();
+  const ashFlakeSeed = new Float32Array(ashFlakeCount * 2);
+  const ashFlakeRest = new Float32Array(ashFlakeCount * 3);
+  for (let i = 0; i < ashFlakeCount; i++) {
+    ashFlakeSeed[i * 2] = i / ashFlakeCount;
+    ashFlakeSeed[i * 2 + 1] = ((i * 0.6180339887) % 1);
+  }
+  ashFlakeGeo.setAttribute('position', new THREE.BufferAttribute(ashFlakeRest, 3));
+  ashFlakeGeo.setAttribute('aSeed', new THREE.BufferAttribute(ashFlakeSeed, 2));
+
+  const ashUniforms = {
+    uTime: smokeUniforms.uTime,
+    uTip: { value: stickTipWorld.clone() },
+    uBed: { value: sceneRefs.ashSurfaceY },
+    uActive: { value: 1 },
+    uTex: { value: textures.ashFlake }
+  };
+
+  // 每粒灰屑周期约 16~21 秒，仅 24% 时间可见：多数时候只有一粒在落，
+  // 4~6 粒轮流剥落，绝不会像灰尘一样密集喷洒。
+  const ashFlakeMat = new THREE.ShaderMaterial({
+    uniforms: ashUniforms,
+    vertexShader: `
+      uniform float uTime;
+      uniform vec3 uTip;
+      uniform float uBed;
+      uniform float uActive;
+      attribute vec2 aSeed;
+      varying float vAlpha;
+      varying float vRot;
+      void main() {
+        float cycleRate = 0.0115 + aSeed.y * 0.0055;
+        float cycle = fract(uTime * cycleRate + aSeed.x);
+        float activeWindow = 0.105;
+
+        if (cycle > activeWindow || uActive < 0.01) {
+          gl_Position = vec4(2.0, 2.0, 2.0, 1.0);
+          gl_PointSize = 0.0;
+          vAlpha = 0.0;
+          vRot = 0.0;
+          return;
+        }
+
+        float localT = cycle / activeWindow;
+        float wait = 0.10;
+        float fallT = clamp((localT - wait) / (1.0 - wait), 0.0, 1.0);
+        float drop = max(0.006, uTip.y - (uBed + 0.0012));
+
+        // 香灰极轻，离开火头后很快到达终端速度：匀速下落而非加速坠落
+        vec3 p = uTip;
+        float ang = aSeed.x * 6.28318 + aSeed.y * 9.7;
+        float sway = sin(fallT * 4.2 + aSeed.y * 12.0) * 0.0022 * fallT;
+        float r = 0.0004 + 0.0021 * fallT;
+        p.x += cos(ang) * (r + sway);
+        p.z += sin(ang) * (r * 0.8 + sway * 0.6);
+        p.y -= drop * fallT;
+        p.y = max(p.y, uBed + 0.0012);
+
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = (2.15 + aSeed.y * 1.1) * (1.0 / -mv.z) * 1.35;
+
+        vAlpha = uActive * smoothstep(0.0, 0.05, localT) * (1.0 - smoothstep(0.90, 1.0, localT)) * 0.96;
+        vRot = aSeed.y * 6.28318 + fallT * 2.2;
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D uTex;
+      varying float vAlpha;
+      varying float vRot;
+      void main() {
+        vec2 uv = gl_PointCoord - 0.5;
+        float c = cos(vRot);
+        float s = sin(vRot);
+        uv = mat2(c, -s, s, c) * uv + 0.5;
+        vec4 t = texture2D(uTex, uv);
+        if (t.a * vAlpha < 0.015) discard;
+        gl_FragColor = vec4(vec3(0.86, 0.84, 0.80), t.a * vAlpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false
+  });
+  const ashFlakePoints = new THREE.Points(ashFlakeGeo, ashFlakeMat);
+  ashFlakePoints.frustumCulled = false;
+  ashFlakePoints.renderOrder = 9;
+  scene.add(ashFlakePoints);
+
   // ============================================================================
-  // 7. 灯光：左侧障子窗冷白晨光 + 室内暖色反弹 + 极轻环境光
+  // 7. 灯光与丁达尔窗光微尘
   // ============================================================================
-  const hemiLight = new THREE.HemisphereLight(0xdce8f4, 0x24170f, 0.55);
+  const hemiLight = new THREE.HemisphereLight(0xdce8f4, 0x24170f, 0.72);
   scene.add(hemiLight);
 
-  const windowLight = new THREE.SpotLight(0xd9e8f7, 78, 0, 1.08, 0.55, 1.1);
+  const windowLight = new THREE.SpotLight(0xd9e8f7, 2.2, 0, 1.15, 0.85, 1.1);
   windowLight.position.set(-2.05, 2.75, -0.30);
   windowLight.target.position.set(0.1, 0.55, 0.12);
   windowLight.castShadow = true;
-  windowLight.shadow.mapSize.set(2048, 2048);
+  windowLight.shadow.mapSize.set(lowEnd ? 1024 : 2048, lowEnd ? 1024 : 2048);
   windowLight.shadow.camera.near = 0.3;
   windowLight.shadow.camera.far = 9;
   windowLight.shadow.bias = -0.0006;
@@ -2538,7 +3145,7 @@ scrollGroup.rotation.z = scrollHangTilt;
   windowFill.position.set(-2.0, 1.9, -0.25);
   scene.add(windowFill);
 
-  const warmBounce = new THREE.PointLight(0xffd2a0, 2.7, 6.5, 2.0);
+  const warmBounce = new THREE.PointLight(0xffd2a0, 4.2, 6.5, 2.0);
   warmBounce.position.set(1.2, 1.65, 1.15);
   scene.add(warmBounce);
 
@@ -2546,11 +3153,10 @@ scrollGroup.rotation.z = scrollHangTilt;
   warmRim.position.set(1.8, 2.1, -1.15);
   scene.add(warmRim);
 
-  const ambientLight = new THREE.AmbientLight(0x6a5a4a, 0.30);
+  const ambientLight = new THREE.AmbientLight(0x6a5a4a, 0.40);
   scene.add(ambientLight);
 
-  // 空气尘埃：只在窗光柱附近轻轻浮动
-  const dustCount = 120;
+  const dustCount = lowEnd ? 56 : 110;
   const dustGeo = new THREE.BufferGeometry();
   const dustPos = new Float32Array(dustCount * 3);
   const dustSeed = new Float32Array(dustCount);
@@ -2596,13 +3202,16 @@ scrollGroup.rotation.z = scrollHangTilt;
   scene.add(dust);
 
   // ============================================================================
-  // 8. 摄影机三机位：茶席 / 香篆微距 / 书画
+  // 8. 摄影机机位与开场/收尾电影运镜（整间茶室停 3 秒 -> 用 3 秒缓推到香；燃尽 6-7 秒提壶斟茶收尾）
   // ============================================================================
   const VIEWS = {
-    front: { pos: new THREE.Vector3(0.92, 1.46, 2.24), target: new THREE.Vector3(-0.10, 0.86, -0.46), fov: 42 },
-    close: { pos: new THREE.Vector3(0.56, 1.12, 1.42), target: new THREE.Vector3(0.26, 0.70, 0.17), fov: 31 },
-    scroll: { pos: new THREE.Vector3(scrollHangX, scrollHangY, 1.02), target: new THREE.Vector3(scrollHangX, scrollHangY, -2.20), fov: 33 }
+    front:  { pos: new THREE.Vector3(0.92, 1.46, 2.24), target: new THREE.Vector3(-0.10, 0.86, -0.46), fov: 42 },
+    close:  { pos: new THREE.Vector3(0.56, 1.12, 1.42), target: new THREE.Vector3(0.26, 0.70, 0.17), fov: 31 },
+    scroll: { pos: new THREE.Vector3(scrollHangX, scrollHangY, 1.02), target: new THREE.Vector3(scrollHangX, scrollHangY, -2.20), fov: 33 },
+    pour:   { pos: new THREE.Vector3(0.26, 0.72, 0.80), target: new THREE.Vector3(-0.16, 0.45, 0.10), fov: 36 },
+    cup:    { pos: new THREE.Vector3(-0.030, 0.6800, 0.4300), target: new THREE.Vector3(-0.100, 0.4600, 0.1650), fov: 31 }
   };
+
   const activeView = {
     name: 'front',
     pos: VIEWS.front.pos.clone(),
@@ -2618,17 +3227,17 @@ scrollGroup.rotation.z = scrollHangTilt;
   let yaw = 0;
   let pitch = 0;
 
-  // 开场运镜：先展示整间茶室，再缓慢推进到香的特写；任何交互都会取消。
-  let introActive = true;
-  let introElapsed = 0;
-  let transitionBias = 1;
-  let transitionLeft = 0;
-  const INTRO_HOLD = 4.3;
+  // 开场 3s 全景停驻 + 精确 3s 缓推至香篆特写
+  let introPhase = 0; // 0: 未激活/已结束, 1: 停驻3秒, 2: 3秒推进中
+  let introTimer = 0;
+  const INTRO_HOLD_SEC = 3.0;
+  const INTRO_PUSH_SEC = 3.0;
 
   function cancelIntro() {
-    introActive = false;
-    transitionBias = 1;
-    transitionLeft = 0;
+    if (introPhase !== 0) {
+      introPhase = 0;
+      introTimer = 0;
+    }
   }
 
   function setView(name, silent) {
@@ -2649,11 +3258,207 @@ scrollGroup.rotation.z = scrollHangTilt;
     setView(name, !!silent);
   };
 
+  let outroElapsed = 0;
+  let outroDonePosted = false;
+  let diving = false;
+
+  function smooth01(t, a, b) {
+    const k = Math.max(0, Math.min(1, (t - a) / Math.max(0.0001, b - a)));
+    return k * k * (3 - 2 * k);
+  }
+
+  function smoother01(t, a, b) {
+    const x = Math.max(0, Math.min(1, (t - a) / Math.max(0.0001, b - a)));
+    return x * x * x * (x * (x * 6 - 15) + 10);
+  }
+
+  function beginSession() {
+    if (restStarted) return;
+    restStarted = true;
+    outroStarted = false;
+    outroElapsed = 0;
+    outroDonePosted = false;
+    diving = false;
+
+    rollScroll();
+
+    burnTarget = appState.totalMs > 0 ? Math.max(0, Math.min(1, appState.remainingMs / appState.totalMs)) : 1.0;
+    burnCurrent = burnTarget;
+    const initLen = Math.max(sceneRefs.stickMinLen, sceneRefs.stickFullLen * burnCurrent);
+    incenseStickMesh.scale.y = initLen;
+    burningTipGroup.position.y = initLen;
+
+    teapotGroup.position.copy(teapotHomePos);
+    teapotGroup.rotation.set(0, teapotHomeRotY, 0);
+    teapotShadowMesh.position.set(teapotHomePos.x, tableSurfaceY + 0.0135, teapotHomePos.z);
+    teapotShadowMesh.material.opacity = 0.78;
+    streamMesh.visible = false;
+    streamMat.opacity = 0;
+    rippleGroup.visible = false;
+    cupSteamUniforms.uActive.value = 0;
+    if (cupLiquids[0]) setCupLiquidLevel(cupLiquids[0], cupPositions[0].initialFill);
+
+    dom.hud.classList.remove('outro', 'visible');
+    dom.hud.style.opacity = '';
+    dom.curtain.style.opacity = '';
+    dom.curtain.classList.remove('fade-out');
+    renderer.toneMappingExposure = 1.36;
+    dom.teaWash.style.opacity = '0';
+    dom.teaWashDim.style.opacity = '0';
+    dom.teaWashCore.style.opacity = '0';
+    dipRippleGroup.visible = false;
+    void dom.curtain.offsetWidth;
+
+    setView('front', true);
+    goal.pos.copy(VIEWS.front.pos);
+    goal.target.copy(VIEWS.front.target);
+    goal.fov = VIEWS.front.fov;
+    activeView.pos.copy(VIEWS.front.pos);
+    activeView.target.copy(VIEWS.front.target);
+    activeView.fov = VIEWS.front.fov;
+    camera.position.copy(VIEWS.front.pos);
+    camera.lookAt(VIEWS.front.target);
+    camera.fov = VIEWS.front.fov;
+    camera.updateProjectionMatrix();
+    lookAtPoint.copy(VIEWS.front.target);
+
+    introPhase = 1;
+    introTimer = 0;
+
+    requestAnimationFrame(() => {
+      if (!appState.active) return;
+      dom.curtain.classList.add('fade-out');
+      setTimeout(() => { if (appState.active) dom.hud.classList.add('visible'); }, 1100);
+    });
+  }
+
+  function startOutro() {
+    if (outroStarted) return;
+    outroStarted = true;
+    outroElapsed = 0;
+    cancelIntro();
+    dom.hud.classList.add('outro');
+    setView('pour', true);
+  }
+
+  const cupHitWorldTmp = new THREE.Vector3();
+
+  function updateOutro(t) {
+    // 收尾分三幕，一镜到底不切：
+    // 1) 0.0–1.6s 镜头从香头缓缓移到茶席，提壶（壶底只离桌 1.2cm）；
+    // 2) 1.45–3.95s 倾壶，一线茶汤入白瓷杯，杯内液面上升、起细涟漪、冒热气；
+    // 3) 3.35–5.35s 镜头继续慢推到「一杯茶」特写并停留，随后黑场。
+    const arrive = smoother01(t, 0.45, 1.6);
+    const leave = smoother01(t, 3.35, 4.20);
+    const atPour = arrive * (1 - leave);
+
+    const liftArc = Math.sin(Math.min(1, arrive) * Math.PI) * 0.004 * (1 - leave);
+    teapotGroup.position.x = teapotHomePos.x + (pourTeapot.x - teapotHomePos.x) * atPour;
+    teapotGroup.position.y = teapotHomePos.y + (pourTeapot.y - teapotHomePos.y) * atPour + liftArc;
+    teapotGroup.position.z = teapotHomePos.z + (pourTeapot.z - teapotHomePos.z) * atPour;
+    teapotGroup.rotation.y = teapotHomeRotY * (1 - atPour);
+
+    const tilt = smoother01(t, 1.45, 2.3) * (1 - smoother01(t, 3.30, 3.95));
+    teapotGroup.rotation.z = -0.5 * tilt;
+
+    teapotShadowMesh.position.x = teapotGroup.position.x;
+    teapotShadowMesh.position.z = teapotGroup.position.z;
+    teapotShadowMesh.material.opacity = 0.78 * (1.0 - 0.5 * atPour);
+
+    const fill = smooth01(t, 1.95, 3.45);
+    if (cupLiquids[0]) {
+      setCupLiquidLevel(
+        cupLiquids[0],
+        cupPositions[0].initialFill + (0.88 - cupPositions[0].initialFill) * fill
+      );
+    }
+    cupSteamUniforms.uActive.value = smooth01(t, 2.2, 3.2);
+
+    const pouring = t > 1.80 && t < 3.58;
+    streamMesh.visible = pouring;
+    rippleGroup.visible = pouring;
+
+    if (pouring) {
+      const flowIn = smooth01(t, 1.80, 2.10);
+      const flowOut = 1.0 - smooth01(t, 3.38, 3.58);
+      const flowStrength = flowIn * flowOut;
+      streamMat.opacity = 0.92 * flowStrength;
+
+      teapotGroup.updateMatrixWorld(true);
+      spoutMouthAnchor.getWorldPosition(spoutWorldTmp);
+
+      const liquidWorldY = pourCup.yBase + 0.003 + (cupLiquids[0] ? cupLiquids[0].position.y : 0.025);
+      cupHitWorldTmp.set(pourCup.x - 0.003, liquidWorldY, pourCup.z);
+
+      updateTeaStreamGeometry(spoutWorldTmp, cupHitWorldTmp, elapsed, flowStrength);
+
+      rippleGroup.position.set(cupHitWorldTmp.x, liquidWorldY + 0.0004, cupHitWorldTmp.z);
+      const w1 = (elapsed * 2.6) % 1.0;
+      const w2 = (elapsed * 2.6 + 0.5) % 1.0;
+      rippleRing1.scale.setScalar(0.6 + w1 * 2.4);
+      rippleRing1.material.opacity = Math.sin(w1 * Math.PI) * 0.42 * flowStrength;
+      rippleRing2.scale.setScalar(0.6 + w2 * 2.4);
+      rippleRing2.material.opacity = Math.sin(w2 * Math.PI) * 0.32 * flowStrength;
+    }
+
+    // ===== 第三幕：一镜俯身入茶，以茶汤波纹收束这一炷香 =====
+    // 3.30–4.35 从斟茶机位滑到杯口上方，3.30 起壶已归位，桌面始终在画内
+    const toCup = smoother01(t, 3.30, 4.35);
+    if (toCup > 0 && !diving) {
+      activeView.name = 'cup';
+    }
+    if (toCup > 0) {
+      goal.pos.copy(VIEWS.pour.pos).lerp(VIEWS.cup.pos, toCup);
+      goal.target.copy(VIEWS.pour.target).lerp(teaSurfaceWorld, toCup);
+      goal.fov = VIEWS.pour.fov + (VIEWS.cup.fov - VIEWS.pour.fov) * toCup;
+    }
+
+    // 4.60–5.90 缓缓俯身，停在「一杯茶」中景；随后整场光缓缓退去
+    const dipApproach = smoother01(t, 4.60, 5.90);
+    if (dipApproach > 0) {
+      diving = true;
+      activeView.name = 'cup';
+      goal.pos.copy(VIEWS.cup.pos).lerp(diveNearPos, dipApproach);
+      goal.target.copy(teaSurfaceWorld);
+      goal.fov = VIEWS.cup.fov + (29 - VIEWS.cup.fov) * dipApproach;
+    }
+
+    // 收尾不靠一团光，而是整场光缓慢退去，像香燃尽后屋里暗下来
+    const dusk = smooth01(t, 5.35, 6.55);
+    renderer.toneMappingExposure = 1.36 * (1.0 - 0.985 * dusk);
+
+    // 液面细波纹：贴杯口随俯身放大，破水前急促扩散
+    const dipActive = smooth01(t, 4.35, 4.85) * (1 - smooth01(t, 6.55, 6.95));
+    dipRippleGroup.visible = dipActive > 0.001;
+    if (dipActive > 0.001) {
+      const burst = smooth01(t, 5.55, 6.30);
+      for (let i = 0; i < dipRippleGroup.children.length; i++) {
+        const ring = dipRippleGroup.children[i];
+        const ph = (elapsed * (0.40 + burst * 0.55) + i / 3) % 1;
+        ring.scale.setScalar(0.45 + ph * (2.05 + burst * 1.15));
+        ring.material.opacity = Math.sin(ph * Math.PI) * 0.30 * dipActive;
+      }
+    }
+
+    // 入汤：不糊一团橙色光球，改成瞳孔式收拢 + 一线水面反光扫过，随即交还宿主
+    const washIn = smooth01(t, 6.42, 6.78);
+    if (washIn > 0) {
+      dom.hud.style.opacity = '0';
+      dom.teaWash.style.opacity = washIn.toFixed(3);
+      dom.teaWashDim.style.opacity = smooth01(t, 6.60, 6.92).toFixed(3);
+    }
+
+    if (t > 7.05 && !outroDonePosted) {
+      outroDonePosted = true;
+      emitHost('done');
+    }
+  }
+
   dom.viewBtns.forEach(btn => {
     btn.addEventListener('click', () => window.shrineView(btn.dataset.view, false));
   });
 
-  // 拖动环视（只在机位附近轻微偏移，不破坏构图）
+  // 拖动环视
   let dragging = false;
   let lastPointerX = 0;
   let lastPointerY = 0;
@@ -2678,7 +3483,24 @@ scrollGroup.rotation.z = scrollHangTilt;
   canvasEl.addEventListener('pointercancel', endDrag);
   canvasEl.addEventListener('pointerleave', endDrag);
 
+  // 封闭展示：严禁右键菜单与刷新
+  window.addEventListener('contextmenu', e => {
+    e.preventDefault();
+    return false;
+  }, true);
+
   window.addEventListener('keydown', e => {
+    const key = String(e.key).toLowerCase();
+    if ((e.metaKey || e.ctrlKey) && key === 'r') {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
+    if (key === 'f5') {
+      e.preventDefault();
+      e.stopPropagation();
+      return;
+    }
     if (e.key === 'Escape') {
       if (!appState.forced && appState.canSkip) emitHost('skip');
       return;
@@ -2711,7 +3533,7 @@ scrollGroup.rotation.z = scrollHangTilt;
     if (w === lastW && h === lastH) return;
     lastW = w;
     lastH = h;
-    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, maxPixelRatio));
     renderer.setSize(w, h);
     camera.aspect = w / h;
     camera.updateProjectionMatrix();
@@ -2722,34 +3544,83 @@ scrollGroup.rotation.z = scrollHangTilt;
   }
 
   // ============================================================================
-  // 9. 渲染循环与首帧揭示
+  // 9. 主渲染循环（线香燃烧缩短、掉灰、青烟、开场3s停+3s推近、收尾斟茶、首帧预热）
   // ============================================================================
   const clock = new THREE.Clock();
   let elapsed = 0;
   let firstFrame = true;
+  const tipWorld = new THREE.Vector3();
+
+  // 预编译着色器，避免第一次切入休息或切换视角时卡顿
+  try {
+    renderer.compile(scene, camera);
+  } catch (_) {}
 
   function updateCamera(dt) {
-    const k = 1 - Math.exp(-dt * 3.2 * transitionBias);
-    activeView.pos.lerp(goal.pos, k);
-    activeView.target.lerp(goal.target, k);
-    activeView.fov += (goal.fov - activeView.fov) * k;
+    if (introPhase === 1) {
+      // 阶段 1：整间茶室全景停驻 3.0 秒
+      introTimer += dt;
+      activeView.pos.copy(VIEWS.front.pos);
+      activeView.target.copy(VIEWS.front.target);
+      activeView.fov = VIEWS.front.fov;
+      if (introTimer >= INTRO_HOLD_SEC) {
+        introPhase = 2;
+        introTimer = 0;
+        activeView.name = 'close';
+        goal.pos.copy(VIEWS.close.pos);
+        goal.target.copy(VIEWS.close.target);
+        goal.fov = VIEWS.close.fov;
+        dom.viewBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.view === 'close'));
+        emitHost('view:close');
+      }
+    } else if (introPhase === 2) {
+      // 阶段 2：精确用 3.0 秒平滑推近到香篆特写
+      introTimer += dt;
+      const u = smoother01(introTimer, 0.0, INTRO_PUSH_SEC);
+      activeView.pos.lerpVectors(VIEWS.front.pos, VIEWS.close.pos, u);
+      activeView.target.lerpVectors(VIEWS.front.target, VIEWS.close.target, u);
+      activeView.fov = VIEWS.front.fov + (VIEWS.close.fov - VIEWS.front.fov) * u;
+      if (introTimer >= INTRO_PUSH_SEC) {
+        introPhase = 0;
+      }
+    } else {
+      const k = 1 - Math.exp(-dt * (diving ? 7.5 : 2.8));
+      activeView.pos.lerp(goal.pos, k);
+      activeView.target.lerp(goal.target, k);
+      activeView.fov += (goal.fov - activeView.fov) * k;
+    }
 
-    const offset = activeView.pos.clone().sub(activeView.target);
-    const radius = Math.max(0.35, offset.length());
-    const theta = Math.atan2(offset.x, offset.z) + yaw;
-    const phi = Math.max(0.20, Math.min(Math.PI * 0.49, Math.acos(offset.y / radius) + pitch));
-    const base = new THREE.Vector3(
-      activeView.target.x + radius * Math.sin(phi) * Math.sin(theta),
-      activeView.target.y + radius * Math.cos(phi),
-      activeView.target.z + radius * Math.sin(phi) * Math.cos(theta)
-    );
-    base.x += Math.sin(elapsed * 0.21) * 0.006;
-    base.y += Math.sin(elapsed * 0.16 + 1.1) * 0.004;
+    let base;
+    if (diving) {
+      // 入茶：脱离轨道夹持（否则最近只能到 32cm，永远推不到杯口）
+      base = activeView.pos.clone();
+      base.x += Math.sin(elapsed * 0.9) * 0.0007;
+      base.y += Math.sin(elapsed * 0.7 + 1.1) * 0.0005;
+    } else {
+      const offset = activeView.pos.clone().sub(activeView.target);
+      const radius = Math.max(0.32, offset.length());
+      const theta = Math.atan2(offset.x, offset.z) + yaw;
+      const phi = Math.max(0.18, Math.min(Math.PI * 0.49, Math.acos(offset.y / radius) + pitch));
+      base = new THREE.Vector3(
+        activeView.target.x + radius * Math.sin(phi) * Math.sin(theta),
+        activeView.target.y + radius * Math.cos(phi),
+        activeView.target.z + radius * Math.sin(phi) * Math.cos(theta)
+      );
+      base.x += Math.sin(elapsed * 0.21) * 0.005;
+      base.y += Math.sin(elapsed * 0.16 + 1.1) * 0.0035;
+    }
 
-    camera.position.lerp(base, 1 - Math.exp(-dt * 4.5));
-    lookAtPoint.lerp(activeView.target, 1 - Math.exp(-dt * 4.5));
+    const camLerp = diving ? (1 - Math.exp(-dt * 9.0))
+      : (introPhase === 2 ? (1 - Math.exp(-dt * 10.0)) : (1 - Math.exp(-dt * 4.5)));
+    camera.position.lerp(base, camLerp);
+    lookAtPoint.lerp(activeView.target, camLerp);
     camera.lookAt(lookAtPoint);
 
+    const nearPlane = diving ? 0.004 : 0.04;
+    if (camera.near !== nearPlane) {
+      camera.near = nearPlane;
+      camera.updateProjectionMatrix();
+    }
     if (Math.abs(camera.fov - activeView.fov) > 0.01) {
       camera.fov = activeView.fov;
       camera.updateProjectionMatrix();
@@ -2760,27 +3631,60 @@ scrollGroup.rotation.z = scrollHangTilt;
     const dt = Math.min(0.05, clock.getDelta());
     elapsed += dt;
 
-    if (introActive) {
-      introElapsed += dt;
-      if (introElapsed >= INTRO_HOLD) {
-        introActive = false;
-        transitionBias = 0.42;
-        transitionLeft = 3.0;
-        setView('close', false);
+    // 独立浏览器预览模式（当宿主尚未接管时，自动按真实时间缓慢推进演示）
+    if (!appState.hostControlled) {
+      if (!restStarted) {
+        appState.active = true;
+        beginSession();
+      }
+      if (appState.remainingMs > 0) {
+        appState.remainingMs = Math.max(0, appState.remainingMs - dt * 1000);
+        appState.targetProgress = 1.0 - appState.remainingMs / appState.totalMs;
+        burnTarget = appState.remainingMs / appState.totalMs;
+        renderHUD();
+      } else if (!outroStarted) {
+        startOutro();
       }
     }
-    if (transitionLeft > 0) {
-      transitionLeft -= dt;
-      if (transitionLeft <= 0) transitionBias = 1;
+
+    if (outroStarted) {
+      outroElapsed += dt;
+      updateOutro(outroElapsed);
     }
 
+    // 1. 线香随 appState.remainingMs / appState.totalMs 真实缩短，炭化火头、白灰帽与青烟根部同步下降
+    burnCurrent += (burnTarget - burnCurrent) * (1 - Math.exp(-dt * 6.0));
+    if (Math.abs(burnTarget - burnCurrent) < 0.0002) burnCurrent = burnTarget;
+
+    const stickLen = Math.max(sceneRefs.stickMinLen, sceneRefs.stickFullLen * burnCurrent);
+    incenseStickMesh.scale.y = stickLen;
+    burningTipGroup.position.y = stickLen;
+
+    // 特写机位目标随香头緩慢下移，始终保持火头处于微距黄金构图点
+    VIEWS.close.target.y = 0.56 + 0.14 * burnCurrent;
+    if (activeView.name === 'close' && introPhase === 0) {
+      goal.target.y = VIEWS.close.target.y;
+    }
+
+    incenseAnchor.updateMatrixWorld(true);
+    smokeEmitSocket.getWorldPosition(tipWorld);
+
+    smokeUniforms.uOrigin.value.copy(tipWorld);
+    ashUniforms.uTip.value.copy(tipWorld);
+
+    // 燃尽收尾阶段火头与青烟自然熄灭消散
+    const emberFadeOut = outroStarted ? Math.max(0, 1.0 - outroElapsed * 0.45) : 1.0;
+    smokeUniforms.uOpacityScale.value = emberFadeOut;
+    ashUniforms.uActive.value = (burnCurrent > 0.008 && !outroStarted) ? 1.0 : 0.0;
+
     smokeUniforms.uTime.value = elapsed;
-    const pulse = 0.82 + 0.13 * Math.sin(elapsed * 6.2) + 0.06 * Math.sin(elapsed * 15.7);
+    cupSteamUniforms.uTime.value = elapsed;
+    const pulse = (0.84 + 0.11 * Math.sin(elapsed * 5.8) + 0.05 * Math.sin(elapsed * 14.3)) * emberFadeOut;
     smokeUniforms.uEmberPulse.value = pulse;
     emberTipUniforms.uTime.value = elapsed;
     emberTipUniforms.uPulse.value = pulse;
-    emberPointLight.intensity = 0.16 + 0.16 * pulse;
-    emberMicroGlow.material.opacity = 0.24 + 0.16 * pulse;
+    emberPointLight.intensity = (0.16 + 0.16 * pulse) * emberFadeOut;
+    emberMicroGlow.material.opacity = (0.24 + 0.16 * pulse) * emberFadeOut;
     windowFill.intensity = 3.15 + 0.10 * Math.sin(elapsed * 0.5);
 
     updateCamera(dt);
@@ -2789,8 +3693,6 @@ scrollGroup.rotation.z = scrollHangTilt;
 
     if (firstFrame) {
       firstFrame = false;
-      dom.curtain.classList.add('fade-out');
-      setTimeout(() => dom.hud.classList.add('visible'), 1150);
       emitHost('ready');
     }
     requestAnimationFrame(animate);

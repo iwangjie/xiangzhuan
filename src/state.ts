@@ -8,7 +8,10 @@ export interface Settings {
   restSeconds: number;
   postponeMinutes: number;
   allowSkip: boolean;
+  maxDailySkips: number;
   startAtLogin: boolean;
+  /** Keep the app out of the Dock (menu bar only). */
+  hideDockIcon: boolean;
 }
 
 export interface Stats {
@@ -23,7 +26,9 @@ export const DEFAULT_SETTINGS: Settings = {
   restSeconds: 90,
   postponeMinutes: 5,
   allowSkip: true,
+  maxDailySkips: 10,
   startAtLogin: false,
+  hideDockIcon: true,
 };
 
 const SETTINGS_KEY = "xiangzhuan.settings.v1";
@@ -39,6 +44,8 @@ export const focusEnd = signal<number | null>(null);
 export const restEnd = signal<number | null>(null);
 export const restOpen = signal(false);
 export const restClosing = signal(false);
+export const paused = signal(false);
+let pausedAt: number | null = null;
 export const restForced = signal(false);
 export const forceNext = signal(false);
 export const postpones = signal(0);
@@ -50,6 +57,19 @@ let restReturn: "focus" | "idle" = "focus";
 let mainWasVisible = false;
 /** Guards the delayed close of the rest windows against a new rest. */
 let restGeneration = 0;
+/** The timer that ends the rest (the page plays its tea-pour outro first). */
+let restFinishing = false;
+let finishTimer: ReturnType<typeof setTimeout> | null = null;
+
+const OUTRO_MS = 7500;
+
+function clearFinishTimer(): void {
+  if (finishTimer != null) {
+    clearTimeout(finishTimer);
+    finishTimer = null;
+  }
+  restFinishing = false;
+}
 
 export function today(): string {
   const d = new Date();
@@ -66,7 +86,12 @@ export const remainingMs = computed(() => {
   const p = phase();
   const at = now();
   if (p === "rest") return restEnd() == null ? restMs() : Math.max(0, restEnd()! - at);
-  if (p === "focus" || p === "postpone") return focusEnd() == null ? workMs() : Math.max(0, focusEnd()! - at);
+  if (p === "focus" || p === "postpone") {
+    const end = focusEnd();
+    if (end == null) return workMs();
+    if (paused() && pausedAt != null) return Math.max(0, end - pausedAt);
+    return Math.max(0, end - at);
+  }
   return workMs();
 });
 
@@ -87,7 +112,7 @@ export const remainingPart = computed(() => {
 export const phaseLabel = computed(() => {
   switch (phase()) {
     case "focus":
-      return "专注";
+      return paused() ? "暂停" : "专注";
     case "rest":
       return "休息";
     case "postpone":
@@ -100,7 +125,7 @@ export const phaseLabel = computed(() => {
 export const phaseLine = computed(() => {
   switch (phase()) {
     case "focus":
-      return "香正在燃，别急。";
+      return paused() ? "已暂停，点继续。" : "香正在燃，别急。";
     case "rest":
       return restForced() ? "这炷香，要燃尽。" : "把眼睛从屏幕上移开。";
     case "postpone":
@@ -111,7 +136,11 @@ export const phaseLine = computed(() => {
 });
 
 export const canSkipNow = computed(
-  () => phase() === "rest" && settings().allowSkip && !restForced(),
+  () =>
+    phase() === "rest" &&
+    settings().allowSkip &&
+    !restForced() &&
+    stats().skips < Math.max(0, settings().maxDailySkips),
 );
 export const canPostponeNow = computed(() => phase() === "rest" && !restForced());
 
@@ -168,6 +197,9 @@ export function loadSettings(): void {
 export function saveSettings(): void {
   if (!settingsLoaded()) return;
   void Storage.setItem(SETTINGS_KEY, JSON.stringify(settings())).catch(() => {});
+  // Native `dock_hide.dylib` watches this key and switches the activation
+  // policy live; absent or "1" keeps the app in the menu bar only.
+  void Storage.setItem("hideDockIcon", settings().hideDockIcon ? "1" : "0").catch(() => {});
 }
 
 export function saveStats(): void {
@@ -180,15 +212,56 @@ export function updateSettings(patch: Partial<Settings>): void {
 
 export function startFocus(): void {
   if (phase() === "rest") return;
+  paused.set(false);
+  pausedAt = null;
   phase.set("focus");
   focusEnd.set(Date.now() + workMs());
+}
+
+export function pauseFocus(): void {
+  if (phase() !== "focus" || paused()) return;
+  pausedAt = Date.now();
+  paused.set(true);
+  now.set(pausedAt);
+}
+
+export function resumeFocus(): void {
+  if (phase() !== "focus" || !paused()) return;
+  const end = focusEnd();
+  const from = pausedAt ?? Date.now();
+  const left = end == null ? workMs() : Math.max(0, end - from);
+  pausedAt = null;
+  paused.set(false);
+  focusEnd.set(Date.now() + left);
+}
+
+export function togglePause(): void {
+  if (paused()) resumeFocus();
+  else pauseFocus();
+}
+
+/** Changing the focus length mid-session keeps the elapsed fraction. */
+export function setWorkMinutes(minutes: number): void {
+  const next = Math.max(1, Math.round(minutes));
+  const end = focusEnd();
+  if (phase() === "focus" && end != null) {
+    const oldTotal = workMs();
+    const at = paused() ? (pausedAt ?? Date.now()) : Date.now();
+    const left = Math.max(0, end - at);
+    const part = oldTotal > 0 ? left / oldTotal : 1;
+    focusEnd.set(at + next * 60_000 * part);
+  }
+  updateSettings({ workMinutes: next });
 }
 
 export function startRest(completedWork = false): void {
   if (phase() === "rest") return;
   if (completedWork) addFocusMinutes(settings().workMinutes);
   restReturn = phase() === "idle" ? "idle" : "focus";
+  paused.set(false);
+  pausedAt = null;
   restForced.set(forceNext());
+  clearFinishTimer();
   restGeneration++;
   restClosing.set(false);
   restOpen.set(true);
@@ -231,11 +304,24 @@ function nextWork(): void {
 }
 
 export function finishRest(): void {
-  if (phase() !== "rest") return;
+  if (phase() !== "rest" || restFinishing) return;
+  // The shrine page owns the next ~7 s: the incense burns out, the teapot
+  // pours a cup, the room fades to black, then it reports "done".
+  restFinishing = true;
   restEnd.set(null);
+  paused.set(false);
+  pausedAt = null;
   restForced.set(false);
   postpones.set(0);
   forceNext.set(false);
+  clearTimeout(finishTimer ?? undefined);
+  finishTimer = setTimeout(finishOutro, OUTRO_MS);
+}
+
+/** Ends the rest after the page's outro (called by "done" or the fallback timer). */
+export function finishOutro(): void {
+  if (phase() !== "rest" || !restFinishing) return;
+  clearFinishTimer();
   addRest();
   closeRestWindows();
   nextWork();
@@ -245,6 +331,9 @@ export function finishRest(): void {
 
 export function postponeRest(): void {
   if (!canPostponeNow()) return;
+  clearFinishTimer();
+  paused.set(false);
+  pausedAt = null;
   const n = postpones() + 1;
   postpones.set(n);
   if (n >= 3) forceNext.set(true);
@@ -258,7 +347,10 @@ export function postponeRest(): void {
 
 export function skipRest(): void {
   if (!canSkipNow()) return;
+  clearFinishTimer();
   forceNext.set(true);
+  paused.set(false);
+  pausedAt = null;
   restEnd.set(null);
   restForced.set(false);
   addSkip();
@@ -269,6 +361,9 @@ export function skipRest(): void {
 }
 
 export function stopCycle(): void {
+  clearFinishTimer();
+  paused.set(false);
+  pausedAt = null;
   if (phase() === "rest") {
     restEnd.set(null);
     restForced.set(false);
@@ -289,6 +384,7 @@ export function tick(): void {
     return;
   }
   if (p === "focus" || p === "postpone") {
+    if (p === "focus" && paused()) return;
     const end = focusEnd();
     if (end != null && at >= end) startRest(p === "focus");
   }

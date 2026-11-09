@@ -18,6 +18,8 @@ import {
   forceNext,
   formatClock,
   loginError,
+  pauseFocus,
+  paused,
   phase,
   phaseLabel,
   phaseLine,
@@ -26,7 +28,9 @@ import {
   remainingMs,
   remainingPart,
   restForced,
+  resumeFocus,
   settings,
+  setWorkMinutes,
   showApp,
   skipRest,
   startFocus,
@@ -41,6 +45,7 @@ import { Action, Card, Dot, KeyHint, Ring, SectionTitle, Segmented } from "./ui"
 const WORK_OPTIONS = [25, 45, 60] as const;
 const REST_OPTIONS = [60, 90, 120] as const;
 const POSTPONE_OPTIONS = [5, 10, 15] as const;
+const SKIP_OPTIONS = [5, 10, 15, 20] as const;
 
 export function MainWindow() {
   const win = currentWindow();
@@ -65,6 +70,8 @@ export function MainWindow() {
 
   const isRest = () => phase() === "rest";
   const isIdle = () => phase() === "idle";
+  const isFocus = () => phase() === "focus";
+  const isPaused = () => isFocus() && paused();
 
   return (
     <View style={{ flex: 1, backgroundColor: "transparent" }}>
@@ -110,7 +117,7 @@ export function MainWindow() {
                   {formatClock(remainingMs())}
                 </Text>
                 <Text class="mt-2 text-[11px] tracking-[0.04em] text-muted-foreground">
-                  {isIdle() ? `一炷香 · ${settings().workMinutes} 分钟` : phaseLine()}
+                  {isIdle() ? `一炷香 · ${settings().workMinutes} 分钟` : isPaused() ? "已暂停 · 点继续" : phaseLine()}
                 </Text>
               </Ring>
 
@@ -128,7 +135,11 @@ export function MainWindow() {
                     </If>
                     <If when={!canPostponeNow() && !canSkipNow()}>
                       <Text class="text-[11px] tracking-[0.12em] text-warning">
-                        {restForced() ? "强制休息中" : "静候香尽"}
+                        {restForced()
+                          ? "强制休息中"
+                          : settings().allowSkip && stats().skips >= settings().maxDailySkips
+                            ? "今日跳过已达上限"
+                            : "静候香尽"}
                       </Text>
                     </If>
                   </View>
@@ -141,18 +152,32 @@ export function MainWindow() {
                   <If when={isIdle()}>
                     <Action label="开始专注" variant="primary" onPress={startFocus} testID="start-focus" />
                   </If>
-                  <If when={!isIdle()}>
-                    <Action label="立即休息" variant="primary" onPress={() => startRest(false)} testID="rest-now" />
+                  <If when={isFocus()}>
+                    <Action
+                      label={isPaused() ? "继续专注" : "暂停专注"}
+                      variant="primary"
+                      onPress={isPaused() ? resumeFocus : pauseFocus}
+                      testID={isPaused() ? "resume-focus" : "pause-focus"}
+                    />
                   </If>
-                  <Action
-                    label={isIdle() ? "直接休息" : "结束本轮"}
-                    variant="ghost"
-                    onPress={isIdle() ? () => startRest(false) : stopCycle}
-                  />
+                  <If when={!isIdle()}>
+                    <Action
+                      label="立即休息"
+                      variant={isFocus() ? "ghost" : "primary"}
+                      onPress={() => startRest(false)}
+                      testID="rest-now"
+                    />
+                  </If>
+                  <If when={isIdle()}>
+                    <Action label="直接休息" variant="ghost" onPress={() => startRest(false)} />
+                  </If>
+                  <If when={!isIdle()}>
+                    <Action label="结束本轮" variant="ghost" onPress={stopCycle} />
+                  </If>
                 </View>
                 <View class="flex-row items-center gap-2">
-                  <KeyHint keys={keymap.label("mod+shift+s")} />
-                  <Text class="text-[10px] text-faint">开始专注</Text>
+                  <KeyHint keys={keymap.label("mod+shift+p")} />
+                  <Text class="text-[10px] text-faint">暂停 / 继续</Text>
                   <View class="mx-1 h-3 w-px bg-border" />
                   <KeyHint keys="Esc" />
                   <Text class="text-[10px] text-faint">休息时提前结束</Text>
@@ -192,8 +217,8 @@ export function MainWindow() {
                   label="专注时长"
                   value={settings().workMinutes}
                   options={WORK_OPTIONS.map((m) => ({ value: m, label: `${m} 分` }))}
-                  onChange={(workMinutes) => updateSettings({ workMinutes })}
-                  disabled={!isIdle()}
+                  onChange={(workMinutes) => setWorkMinutes(workMinutes)}
+                  disabled={isRest()}
                 />
               </View>
               <View class="h-px bg-border/60" />
@@ -244,6 +269,21 @@ export function MainWindow() {
                 />
               </View>
               <View class="h-px bg-border/60" />
+              <View style={{ gap: 8 }}>
+                <View class="flex-row items-center justify-between">
+                  <Text class="text-[12px] font-medium text-foreground">每日跳过上限</Text>
+                  <Text class="text-[10px] text-faint">
+                    今日已跳 {stats().skips} / {settings().maxDailySkips} 次
+                  </Text>
+                </View>
+                <Segmented
+                  label="每日跳过上限"
+                  value={settings().maxDailySkips}
+                  options={SKIP_OPTIONS.map((n) => ({ value: n, label: `${n} 次` }))}
+                  onChange={(maxDailySkips) => updateSettings({ maxDailySkips })}
+                />
+              </View>
+              <View class="h-px bg-border/60" />
               <View class="flex-row items-center justify-between gap-4">
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text class="text-[12px] font-medium text-foreground">登录时启动</Text>
@@ -258,6 +298,22 @@ export function MainWindow() {
                     void setLoginItem(checked);
                   }}
                   accessibilityLabel="登录时启动"
+                  trackClass="h-6 w-11 rounded-full bg-muted p-0.5 transition-colors checked:bg-primary"
+                  thumbClass="size-5 rounded-full bg-background shadow-sm transition-transform checked:translate-x-5"
+                />
+              </View>
+              <View class="h-px bg-border/60" />
+              <View class="flex-row items-center justify-between gap-4">
+                <View style={{ flex: 1, gap: 2 }}>
+                  <Text class="text-[12px] font-medium text-foreground">隐藏程序坞图标</Text>
+                  <Text class="text-[10px] leading-4 text-muted-foreground">
+                    只在菜单栏运行，不占 Dock
+                  </Text>
+                </View>
+                <Switch
+                  checked={settings().hideDockIcon}
+                  onChange={({ checked }) => updateSettings({ hideDockIcon: checked })}
+                  accessibilityLabel="隐藏程序坞图标"
                   trackClass="h-6 w-11 rounded-full bg-muted p-0.5 transition-colors checked:bg-primary"
                   thumbClass="size-5 rounded-full bg-background shadow-sm transition-transform checked:translate-x-5"
                 />

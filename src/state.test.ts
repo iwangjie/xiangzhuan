@@ -3,19 +3,25 @@ import {
   DEFAULT_SETTINGS,
   canPostponeNow,
   canSkipNow,
+  finishOutro,
   finishRest,
   focusEnd,
   forceNext,
+  pauseFocus,
   phase,
   postponeRest,
   postpones,
+  remainingMs,
   restEnd,
   restForced,
   restOpen,
+  resumeFocus,
+  setWorkMinutes,
   settings,
   skipRest,
   startFocus,
   startRest,
+  stats,
   tick,
 } from "./state";
 
@@ -58,6 +64,9 @@ test("three postponements make the next rest forced", () => {
   expect(canPostponeNow()).toBe(false);
   expect(canSkipNow()).toBe(false);
   finishRest();
+  // The rest window keeps playing the burn-out/pour outro; it ends on "done".
+  expect(phase()).toBe("rest");
+  finishOutro();
   expect(forceNext()).toBe(false);
   expect(phase()).toBe("focus");
 });
@@ -83,4 +92,38 @@ test("a rest with skipping off can only be postponed", () => {
   expect(canPostponeNow()).toBe(true);
   postponeRest();
   expect(phase()).toBe("postpone");
+});
+
+test("pausing freezes focus and resuming gives the time back", () => {
+  reset();
+  startFocus();
+  const end = focusEnd();
+  expect(end).not.toBe(null);
+  pauseFocus();
+  const frozen = remainingMs();
+  tick();
+  expect(remainingMs()).toBe(frozen);
+  expect(focusEnd()).toBe(end);
+  resumeFocus();
+  // The paused duration (0 ms inside one test) is returned; never lost.
+  expect(focusEnd()).toBeGreaterThanOrEqual(end!);
+});
+
+test("changing the focus length mid-session rescales the remainder", () => {
+  reset();
+  startFocus();
+  const before = remainingMs();
+  setWorkMinutes(50);
+  expect(settings().workMinutes).toBe(50);
+  expect(remainingMs()).toBeGreaterThan(before * 1.8);
+});
+
+test("the daily skip cap stops skipping", () => {
+  reset();
+  settings.update((s) => ({ ...s, maxDailySkips: 1 }));
+  stats.update((s) => ({ ...s, skips: 1 }));
+  restFromFocus();
+  expect(canSkipNow()).toBe(false);
+  skipRest();
+  expect(phase()).toBe("rest");
 });
