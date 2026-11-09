@@ -2148,7 +2148,7 @@
   const teapotHomeRotY = teapotGroup.rotation.y;
   const pourCup = cupPositions[0];
   // 提壶悬停位置：位于主杯正左方 (-X)，旋转设为 0，壶嘴 (+X) 自然精准对准主杯中心
-  const pourTeapot = new THREE.Vector3(pourCup.x - 0.145, tableSurfaceY + 0.105, pourCup.z);
+  const pourTeapot = new THREE.Vector3(pourCup.x - 0.145, tableSurfaceY + 0.072, pourCup.z);
 
   const streamMat = new THREE.MeshPhysicalMaterial({
     color: 0x9c3e0e,
@@ -2199,12 +2199,6 @@
     geo.computeVertexNormals();
     return geo;
   })();
-  const streamBaseCircle = new Float32Array((streamSegsR + 1) * 2);
-  for (let i = 0; i <= streamSegsR; i++) {
-    const a = (i / streamSegsR) * Math.PI * 2;
-    streamBaseCircle[i * 2] = Math.cos(a);
-    streamBaseCircle[i * 2 + 1] = Math.sin(a);
-  }
   const streamMesh = new THREE.Mesh(streamGeo, streamMat);
   streamMesh.visible = false;
   streamMesh.frustumCulled = false;
@@ -2324,25 +2318,54 @@
 
   const spoutWorldTmp = new THREE.Vector3();
 
-  function updateTeaStreamGeometry(spoutPos, hitPos, elapsedT, flowStrength) {
+  const STREAM_G = 9.81;
+  const streamTanTmp = new THREE.Vector3();
+  const streamUTmp = new THREE.Vector3();
+  const streamVTmp = new THREE.Vector3();
+
+  // 真实抛体：出流只有水平初速，之后只受重力。落点由飞行时间反推，
+  // 横向匀速、竖直二次下落；截面按连续方程 A·v=常数 随下落变细。
+  function updateTeaStreamGeometry(spoutPos, hitPos, elapsedT, flowStrength, head01, tail01) {
     const posAttr = streamGeo.attributes.position;
+    const drop = Math.max(0.004, spoutPos.y - hitPos.y);
+    const tEnd = Math.sqrt((2 * drop) / STREAM_G);
+    const vx = (hitPos.x - spoutPos.x) / tEnd;
+    const vz = (hitPos.z - spoutPos.z) / tEnd;
+    const v0 = Math.max(0.02, Math.hypot(vx, vz));
+    const head = Math.max(0, Math.min(1, head01));
+    const tail = Math.max(0, Math.min(1, tail01));
+
     let idx = 0;
     for (let yIdx = 0; yIdx <= streamSegsY; yIdx++) {
-      const s = yIdx / streamSegsY; // 0: 壶嘴口 -> 1: 落杯液面
-      // 抛物线初速外抛 + 重力加速下落
-      const arcForward = Math.sin(s * Math.PI) * 0.011 * flowStrength;
-      const cx = spoutPos.x + (hitPos.x - spoutPos.x) * s + arcForward;
-      const cy = spoutPos.y + (hitPos.y - spoutPos.y) * Math.pow(s, 1.38);
-      const cz = spoutPos.z + (hitPos.z - spoutPos.z) * s;
+      const u = yIdx / streamSegsY;
+      const s = head + (tail - head) * u;
+      const t = s * tEnd;
+      const cx = spoutPos.x + vx * t;
+      const cy = spoutPos.y - 0.5 * STREAM_G * t * t;
+      const cz = spoutPos.z + vz * t;
 
-      // 流体受重力拉伸变细 + 极细微表面张力波动
-      const flutter = 1.0 + 0.07 * Math.sin(s * 20.0 - elapsedT * 36.0);
-      const radius = (0.0025 * (1.0 - 0.42 * s)) * flutter * Math.max(0.25, flowStrength);
+      // 截面垂直于流向：切线 (vx, -g t, vz)
+      streamTanTmp.set(vx, -STREAM_G * t, vz).normalize();
+      streamUTmp.set(-streamTanTmp.z, 0, streamTanTmp.x);
+      if (streamUTmp.lengthSq() < 1e-8) streamUTmp.set(1, 0, 0);
+      streamUTmp.normalize();
+      streamVTmp.crossVectors(streamTanTmp, streamUTmp);
+
+      const speed = Math.hypot(v0, STREAM_G * t);
+      const flutter = 1.0 + 0.05 * Math.sin(s * 22.0 - elapsedT * 34.0);
+      const radius = 0.0023 * Math.sqrt(v0 / Math.max(v0 * 0.3, speed))
+        * flutter * Math.max(0.3, flowStrength);
 
       for (let rIdx = 0; rIdx <= streamSegsR; rIdx++) {
-        const ux = streamBaseCircle[rIdx * 2];
-        const uz = streamBaseCircle[rIdx * 2 + 1];
-        posAttr.setXYZ(idx++, cx + ux * radius, cy, cz + uz * radius);
+        const a = (rIdx / streamSegsR) * Math.PI * 2;
+        const ux = Math.cos(a);
+        const uz = Math.sin(a);
+        posAttr.setXYZ(
+          idx++,
+          cx + (streamUTmp.x * ux + streamVTmp.x * uz) * radius,
+          cy + (streamUTmp.y * ux + streamVTmp.y * uz) * radius,
+          cz + (streamUTmp.z * ux + streamVTmp.z * uz) * radius
+        );
       }
     }
     posAttr.needsUpdate = true;
@@ -3382,7 +3405,7 @@
       const flowIn = smooth01(t, 1.80, 2.10);
       const flowOut = 1.0 - smooth01(t, 3.38, 3.58);
       const flowStrength = flowIn * flowOut;
-      streamMat.opacity = 0.92 * flowStrength;
+      streamMat.opacity = 0.92 * Math.min(1, flowStrength * 1.2);
 
       teapotGroup.updateMatrixWorld(true);
       spoutMouthAnchor.getWorldPosition(spoutWorldTmp);
@@ -3390,7 +3413,12 @@
       const liquidWorldY = pourCup.yBase + 0.003 + (cupLiquids[0] ? cupLiquids[0].position.y : 0.025);
       cupHitWorldTmp.set(pourCup.x - 0.003, liquidWorldY, pourCup.z);
 
-      updateTeaStreamGeometry(spoutWorldTmp, cupHitWorldTmp, elapsed, flowStrength);
+      // 起流：水头从壶嘴往下走；收流：水尾继续下落，整段掉进杯里
+      const streamHead = 1.0 - flowOut;
+      const streamTail = Math.min(1.0, flowIn * 1.35);
+      updateTeaStreamGeometry(
+        spoutWorldTmp, cupHitWorldTmp, elapsed, flowStrength, streamHead, streamTail
+      );
 
       rippleGroup.position.set(cupHitWorldTmp.x, liquidWorldY + 0.0004, cupHitWorldTmp.z);
       const w1 = (elapsed * 2.6) % 1.0;
