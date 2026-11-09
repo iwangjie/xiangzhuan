@@ -1,0 +1,2807 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<title>香篆 · 茶席静坐</title>
+<style>
+  :root {
+    --c-paper: #e6dfd3;
+    --c-muted: rgba(230, 223, 211, 0.56);
+    --c-faint: rgba(230, 223, 211, 0.16);
+    --c-seal: #9b291e;
+    --c-gold: #cba15c;
+    --font-serif: "Songti SC", "STSong", "Noto Serif CJK SC", "Source Han Serif SC", "Kaiti SC", "STKaiti", serif;
+    --font-sans: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  html, body {
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    background-color: #0d0b09;
+    color: var(--c-paper);
+    font-family: var(--font-serif);
+  }
+
+  #webgl-container {
+    position: fixed;
+    inset: 0;
+    z-index: 1;
+    cursor: grab;
+  }
+  #webgl-container:active {
+    cursor: grabbing;
+  }
+
+  /* 电影级光学暗角与上下柔化衬底，确保纸墨文字在任何亮窗背景下清晰可读 */
+  #vignette {
+    position: fixed;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    background:
+      radial-gradient(ellipse at 52% 48%, rgba(12, 10, 8, 0) 48%, rgba(10, 8, 6, 0.36) 80%, rgba(6, 5, 4, 0.78) 100%),
+      linear-gradient(to bottom, rgba(8, 7, 6, 0.62) 0%, rgba(8, 7, 6, 0.16) 14%, rgba(8, 7, 6, 0) 30%, rgba(8, 7, 6, 0) 74%, rgba(7, 6, 5, 0.78) 100%);
+  }
+
+  /* 微妙胶片颗粒质感层 */
+  #film-grain {
+    position: fixed;
+    inset: 0;
+    z-index: 3;
+    pointer-events: none;
+    opacity: 0.032;
+    mix-blend-mode: overlay;
+    background-size: 160px 160px;
+  }
+
+  /* 开场黑场淡入 */
+  #curtain {
+    position: fixed;
+    inset: 0;
+    z-index: 20;
+    background: #090806;
+    pointer-events: none;
+    opacity: 1;
+    transition: opacity 1.35s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  #curtain.fade-out {
+    opacity: 0;
+  }
+
+  /* 极简纸墨风 HUD */
+  #hud {
+    position: fixed;
+    inset: 0;
+    z-index: 10;
+    pointer-events: none;
+    padding: 44px 54px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 1.3s cubic-bezier(0.16, 1, 0.3, 1), transform 1.3s cubic-bezier(0.16, 1, 0.3, 1);
+  }
+  #hud.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .hud-top {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+  }
+
+  /* 左上：朱红小印章「香」+ 竖排「茶烟」「修身养性」 */
+  .brand-col {
+    display: flex;
+    flex-direction: row;
+    align-items: flex-start;
+    gap: 16px;
+    padding: 10px 16px 14px 10px;
+    border-radius: 2px;
+    background: radial-gradient(ellipse at 20% 25%, rgba(12, 10, 8, 0.42) 0%, rgba(12, 10, 8, 0) 80%);
+  }
+
+  .seal {
+    width: 24px;
+    height: 24px;
+    border: 1px solid rgba(186, 56, 42, 0.85);
+    background: rgba(155, 41, 30, 0.24);
+    color: #e66b5b;
+    font-size: 12px;
+    line-height: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: inset 0 0 6px rgba(155, 41, 30, 0.35), 0 2px 10px rgba(0, 0, 0, 0.35);
+  }
+
+  .vertical-inscription {
+    writing-mode: vertical-rl;
+    text-orientation: upright;
+    letter-spacing: 0.34em;
+    font-size: 12px;
+    color: var(--c-muted);
+    line-height: 2.05;
+    height: 126px;
+    border-left: 1px solid var(--c-faint);
+    padding-left: 12px;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
+  }
+  .vertical-inscription strong {
+    color: var(--c-paper);
+    font-weight: 400;
+  }
+
+  /* HUD 整体不拦截拖拽，但按钮必须可点 */
+  .view-btn, .action-link {
+    pointer-events: auto;
+  }
+
+  /* 右上：三机位切换「茶席」「香篆」「书画」 */
+  .view-switcher {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 28px;
+    padding: 8px 18px;
+    background: rgba(12, 10, 8, 0.38);
+    border: 1px solid rgba(230, 223, 211, 0.08);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+  }
+
+  .view-label-prefix {
+    color: rgba(230, 223, 211, 0.36);
+    font-size: 11px;
+    letter-spacing: 0.22em;
+    margin-right: -6px;
+  }
+
+  .view-btn {
+    background: none;
+    border: none;
+    color: var(--c-muted);
+    font-family: var(--font-serif);
+    font-size: 13px;
+    letter-spacing: 0.26em;
+    cursor: pointer;
+    padding: 6px 0;
+    position: relative;
+    transition: color 0.35s ease;
+    text-shadow: 0 1px 8px rgba(0, 0, 0, 0.8);
+  }
+  .view-btn:hover {
+    color: var(--c-paper);
+  }
+  .view-btn.active {
+    color: var(--c-paper);
+  }
+  .view-btn::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    right: 0.26em;
+    bottom: 0;
+    height: 1.5px;
+    background: var(--c-gold);
+    transform: scaleX(0);
+    transform-origin: left center;
+    transition: transform 0.4s cubic-bezier(0.22, 1, 0.36, 1);
+  }
+  .view-btn.active::after {
+    transform: scaleX(1);
+  }
+
+  /* 底部区域 */
+  .hud-bottom {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 32px;
+  }
+
+  /* 左下：状态与进度线 */
+  .status-block {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    min-width: 268px;
+    text-shadow: 0 2px 10px rgba(0, 0, 0, 0.85);
+  }
+
+  .status-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 18px;
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    color: var(--c-muted);
+  }
+
+  #status-label {
+    color: var(--c-paper);
+  }
+
+  #progress-num {
+    font-family: var(--font-serif);
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    font-variant-numeric: tabular-nums;
+    color: rgba(230, 223, 211, 0.52);
+  }
+
+  .incense-ruler {
+    position: relative;
+    width: 268px;
+    height: 1px;
+    background: rgba(230, 223, 211, 0.18);
+  }
+  .incense-ruler::before,
+  .incense-ruler::after {
+    content: "";
+    position: absolute;
+    top: -2px;
+    width: 1px;
+    height: 5px;
+    background: rgba(230, 223, 211, 0.28);
+  }
+  .incense-ruler::before { left: 0; }
+  .incense-ruler::after { right: 0; }
+
+  #progress-fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    height: 1px;
+    width: 0%;
+    background: linear-gradient(90deg, rgba(230, 223, 211, 0.28) 0%, rgba(218, 132, 68, 0.92) 100%);
+    transition: width 0.35s linear;
+  }
+
+  #progress-ember {
+    position: absolute;
+    top: -1.5px;
+    left: 0%;
+    width: 4px;
+    height: 4px;
+    border-radius: 50%;
+    background: #ff692e;
+    box-shadow: 0 0 8px 2px rgba(255, 94, 32, 0.88);
+    transform: translateX(-50%);
+    transition: left 0.35s linear;
+  }
+
+  .drag-hint {
+    font-size: 11px;
+    letter-spacing: 0.16em;
+    color: rgba(230, 223, 211, 0.36);
+    margin-top: 2px;
+  }
+
+  /* 右下：大号倒计时 + 屏幕名称 display + 延后/提前结束 */
+  .timer-cluster {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 10px;
+    text-shadow: 0 2px 14px rgba(0, 0, 0, 0.85);
+  }
+
+  .timer-caption {
+    font-size: 11px;
+    letter-spacing: 0.26em;
+    color: var(--c-muted);
+    margin-right: -0.26em;
+  }
+
+  #countdown {
+    font-family: "Optima", "Baskerville", "Didot", "Songti SC", serif;
+    font-weight: 300;
+    font-size: clamp(48px, 5.2vw, 74px);
+    line-height: 0.95;
+    letter-spacing: 0.08em;
+    font-variant-numeric: tabular-nums;
+    color: var(--c-paper);
+    margin-right: -0.08em;
+  }
+
+  #display-name {
+    font-family: var(--font-sans);
+    font-size: 11px;
+    letter-spacing: 0.2em;
+    color: rgba(230, 223, 211, 0.42);
+    margin-top: -2px;
+    min-height: 15px;
+  }
+
+  .actions-bar {
+    pointer-events: auto;
+    display: flex;
+    align-items: center;
+    gap: 24px;
+    padding-top: 10px;
+    border-top: 1px solid var(--c-faint);
+    transition: opacity 0.4s ease;
+  }
+  .actions-bar.hidden {
+    display: none;
+  }
+
+  .action-link {
+    background: none;
+    border: none;
+    color: var(--c-muted);
+    font-family: var(--font-serif);
+    font-size: 12px;
+    letter-spacing: 0.2em;
+    cursor: pointer;
+    padding: 2px 0 4px 0;
+    border-bottom: 1px solid rgba(230, 223, 211, 0.24);
+    transition: color 0.3s ease, border-color 0.3s ease;
+  }
+  .action-link:hover {
+    color: var(--c-paper);
+    border-bottom-color: rgba(230, 223, 211, 0.82);
+  }
+  .action-link.hidden {
+    display: none;
+  }
+
+  .esc-hint {
+    font-family: var(--font-sans);
+    font-size: 10px;
+    letter-spacing: 0.14em;
+    color: rgba(230, 223, 211, 0.34);
+  }
+  .esc-hint.hidden {
+    display: none;
+  }
+
+  #forced-note {
+    font-size: 12px;
+    letter-spacing: 0.22em;
+    color: rgba(230, 223, 211, 0.56);
+    padding-top: 8px;
+    border-top: 1px solid var(--c-faint);
+    display: none;
+  }
+  #forced-note.visible {
+    display: block;
+  }
+
+  @media (max-width: 820px) {
+    #hud {
+      padding: 26px 24px;
+    }
+    .vertical-inscription {
+      height: 108px;
+      font-size: 11px;
+    }
+    .incense-ruler {
+      width: 190px;
+    }
+    .status-block {
+      min-width: 190px;
+    }
+    .view-switcher {
+      gap: 16px;
+      padding: 6px 12px;
+    }
+  }
+</style>
+</head>
+<body>
+
+<div id="webgl-container"></div>
+<div id="vignette"></div>
+<div id="film-grain"></div>
+<div id="curtain"></div>
+
+<div id="hud">
+  <header class="hud-top">
+    <div class="brand-col">
+      <div class="seal">香</div>
+      <div class="vertical-inscription">
+        <strong>茶烟</strong><br>
+        修身养性
+      </div>
+    </div>
+
+    <nav class="view-switcher" aria-label="视角切换">
+      <span class="view-label-prefix">观境</span>
+      <button class="view-btn active" data-view="front" type="button">茶席</button>
+      <button class="view-btn" data-view="close" type="button">香篆</button>
+      <button class="view-btn" data-view="scroll" type="button">书画</button>
+    </nav>
+  </header>
+
+  <footer class="hud-bottom">
+    <div class="status-block">
+      <div class="status-row">
+        <span id="status-label">一炷香 · 静坐</span>
+        <span id="progress-num">已燃 0% · 茶烟未散</span>
+      </div>
+      <div class="incense-ruler">
+        <div id="progress-fill"></div>
+        <div id="progress-ember"></div>
+      </div>
+      <div class="drag-hint" id="drag-hint">拖动环视 · 1/2/3 切换视角 · ESC 结束</div>
+    </div>
+
+    <div class="timer-cluster">
+      <div class="timer-caption" id="timer-caption">清坐余晷</div>
+      <div id="countdown">05:00</div>
+      <div id="display-name">Built-in Retina Display</div>
+      <div class="actions-bar" id="actions-bar">
+        <button class="action-link" id="btn-postpone" type="button">延后五分</button>
+        <button class="action-link" id="btn-skip" type="button">提前结束</button>
+        <span class="esc-hint" id="esc-hint">ESC 结束</span>
+      </div>
+      <div id="forced-note">这炷香，要燃尽。</div>
+    </div>
+  </footer>
+</div>
+
+<script>
+(function() {
+  'use strict';
+
+  // ============================================================================
+  // 0. 宿主通信与全局状态契约（严格保留，display 为屏幕名称，倒计时由 remainingMs 计算）
+  // ============================================================================
+  function emitHost(msg) {
+    if (window.nsh && typeof window.nsh.postMessage === 'function') {
+      try {
+        window.nsh.postMessage(msg);
+      } catch (err) {
+        console.log('[nsh]', msg);
+      }
+    } else {
+      console.log('[nsh]', msg);
+    }
+  }
+
+  const appState = {
+    remainingMs: 300000,
+    totalMs: 300000,
+    progress: 0.0,
+    targetProgress: 0.0,
+    canPostpone: true,
+    canSkip: true,
+    forced: false,
+    label: '一炷香 · 静坐',
+    display: '',
+    hostControlled: false
+  };
+
+  const dom = {
+    curtain: document.getElementById('curtain'),
+    hud: document.getElementById('hud'),
+    filmGrain: document.getElementById('film-grain'),
+    statusLabel: document.getElementById('status-label'),
+    progressNum: document.getElementById('progress-num'),
+    progressFill: document.getElementById('progress-fill'),
+    progressEmber: document.getElementById('progress-ember'),
+    countdown: document.getElementById('countdown'),
+    displayName: document.getElementById('display-name'),
+    timerCaption: document.getElementById('timer-caption'),
+    actionsBar: document.getElementById('actions-bar'),
+    btnPostpone: document.getElementById('btn-postpone'),
+    btnSkip: document.getElementById('btn-skip'),
+    escHint: document.getElementById('esc-hint'),
+    dragHint: document.getElementById('drag-hint'),
+    forcedNote: document.getElementById('forced-note'),
+    viewBtns: Array.from(document.querySelectorAll('.view-btn'))
+  };
+
+  function formatMMSS(ms) {
+    const totalSec = Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
+    const m = Math.floor(totalSec / 60);
+    const s = totalSec % 60;
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  function renderHUD() {
+    const pct = Math.max(0, Math.min(1, appState.targetProgress));
+    const pctInt = Math.round(pct * 100);
+
+    dom.statusLabel.textContent = appState.label || '一炷香 · 静坐';
+    dom.progressNum.textContent = '已燃 ' + pctInt + '% · ' + (pctInt >= 99 ? '香尽茶温' : '茶烟未散');
+    dom.progressFill.style.width = (pct * 100).toFixed(2) + '%';
+    dom.progressEmber.style.left = (pct * 100).toFixed(2) + '%';
+
+    // 倒计时永远从 remainingMs 计算，绝不把 display 当时间
+    dom.countdown.textContent = formatMMSS(appState.remainingMs);
+    dom.displayName.textContent = appState.display ? appState.display : '';
+    dom.displayName.style.display = appState.display ? 'block' : 'none';
+
+    const showPostpone = !appState.forced && appState.canPostpone !== false;
+    const showSkip = !appState.forced && appState.canSkip !== false;
+
+    dom.btnPostpone.classList.toggle('hidden', !showPostpone);
+    dom.btnSkip.classList.toggle('hidden', !showSkip);
+    dom.escHint.classList.toggle('hidden', !showSkip);
+    dom.actionsBar.classList.toggle('hidden', appState.forced || (!showPostpone && !showSkip));
+    dom.forcedNote.classList.toggle('visible', !!appState.forced);
+    dom.dragHint.textContent = showSkip
+      ? '拖动环视 · 1/2/3 切换视角 · ESC 结束'
+      : '拖动环视 · 1/2/3 切换视角';
+  }
+
+  window.shrineState = function(s) {
+    if (!s || typeof s !== 'object') return;
+    appState.hostControlled = true;
+
+    if (typeof s.totalMs === 'number' && s.totalMs > 0) {
+      appState.totalMs = s.totalMs;
+    }
+    if (typeof s.remainingMs === 'number') {
+      appState.remainingMs = Math.max(0, s.remainingMs);
+    }
+
+    if (typeof s.progress === 'number') {
+      appState.targetProgress = Math.max(0, Math.min(1, s.progress));
+    } else if (appState.totalMs > 0 && typeof s.remainingMs === 'number') {
+      appState.targetProgress = Math.max(0, Math.min(1, 1 - appState.remainingMs / appState.totalMs));
+    }
+
+    if (typeof s.canPostpone === 'boolean') appState.canPostpone = s.canPostpone;
+    if (typeof s.canSkip === 'boolean') appState.canSkip = s.canSkip;
+    if (typeof s.forced === 'boolean') appState.forced = s.forced;
+    if (typeof s.label === 'string' && s.label.trim()) appState.label = s.label.trim();
+    if (typeof s.display === 'string') appState.display = s.display.trim();
+
+    renderHUD();
+  };
+
+  window.addEventListener('message', function(e) {
+    try {
+      const payload = typeof e.data === 'string' ? JSON.parse(e.data) : e.data;
+      if (!payload || typeof payload !== 'object') return;
+      if (payload.type === 'state' && payload.state) {
+        window.shrineState(payload.state);
+      } else if (payload.type === 'view' && payload.view) {
+        window.shrineView(payload.view, true);
+      } else {
+        if ('remainingMs' in payload || 'progress' in payload || 'forced' in payload || 'display' in payload) {
+          window.shrineState(payload);
+        }
+        if (typeof payload.view === 'string') {
+          window.shrineView(payload.view, true);
+        }
+      }
+    } catch (_) {}
+  });
+
+  // 生成微妙胶片噪点背景
+  (function initFilmGrain() {
+    const c = document.createElement('canvas');
+    c.width = 128;
+    c.height = 128;
+    const ctx = c.getContext('2d');
+    const img = ctx.createImageData(128, 128);
+    for (let i = 0; i < img.data.length; i += 4) {
+      const v = Math.floor(Math.random() * 255);
+      img.data[i] = v;
+      img.data[i + 1] = v;
+      img.data[i + 2] = v;
+      img.data[i + 3] = 255;
+    }
+    ctx.putImageData(img, 0, 0);
+    dom.filmGrain.style.backgroundImage = 'url(' + c.toDataURL() + ')';
+  })();
+
+  // 墙上挂轴彩蛋：每次休息随机抽一条格言，随机挂位/倾斜/题款/朱印
+  const SCROLL_LINES = [
+    ['心安即归处', '焚香默坐', '清心'],
+    ['得失随缘', '清心居静坐题', '自在'],
+    ['事去则空', '一炷香里', '无事'],
+    ['静水流深', '闲居偶得', '守拙'],
+    ['一念放下', '茶烟未散', '放下'],
+    ['万般自在', '清心居', '自在'],
+    ['行到水穷处', '坐看云起', '云起'],
+    ['坐看云起时', '山居偶题', '看云'],
+    ['不乱于心', '静坐', '心安'],
+    ['不困于情', '焚香', '忘情'],
+    ['大道至简', '清心居', '至简'],
+    ['顺其自然', '闲居', '自然'],
+    ['随遇而安', '一炷香', '随缘'],
+    ['人生如逆旅', '夜坐', '行人'],
+    ['我亦是行人', '清心居', '过客'],
+    ['世事一场大梦', '闲居偶记', '如梦'],
+    ['人生几度秋凉', '秋夜焚香', '秋凉'],
+    ['心远地自偏', '山居', '心远'],
+    ['此中有真意', '静坐', '真意'],
+    ['欲辨已忘言', '忘言', '忘言'],
+    ['山高水长', '清心居', '山高'],
+    ['清风徐来', '水波不兴', '清风'],
+    ['知足者富', '闲居', '知足'],
+    ['强行者有志', '自勉', '有志'],
+    ['不念过往', '不畏将来', '当下'],
+    ['一念心清净', '莲花处处开', '清净']
+  ];
+  const scrollPick = SCROLL_LINES[(Math.random() * SCROLL_LINES.length) | 0];
+  const scrollChars = Array.from(scrollPick[0]);
+  const scrollInscription = scrollPick[1];
+  const scrollSealChars = Array.from(scrollPick[2]);
+  const scrollHangX = -0.6 + Math.random() * 1.2;
+  const scrollHangY = 1.36 + Math.random() * 0.16;
+  const scrollHangTilt = (Math.random() - 0.5) * 0.022;
+
+  // ============================================================================
+  // 1. WebGLRenderer、Scene、Camera 与 PMREM 真实环境反射初始化
+  // ============================================================================
+  const container = document.getElementById('webgl-container');
+  const renderer = new THREE.WebGLRenderer({
+    antialias: true,
+    powerPreference: 'high-performance',
+    alpha: false
+  });
+  renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+  renderer.setSize(window.innerWidth, window.innerHeight);
+  renderer.shadowMap.enabled = true;
+  renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+  renderer.toneMapping = THREE.ACESFilmicToneMapping;
+  renderer.toneMappingExposure = 1.34;
+  if ('outputColorSpace' in renderer && THREE.SRGBColorSpace) {
+    renderer.outputColorSpace = THREE.SRGBColorSpace;
+  }
+  container.appendChild(renderer.domElement);
+
+  const scene = new THREE.Scene();
+  scene.background = new THREE.Color(0x14110e);
+  scene.fog = new THREE.FogExp2(0x16130f, 0.042);
+
+  // 50mm 标准电影定焦镜头感（垂直 FOV 约 31 度）
+  const camera = new THREE.PerspectiveCamera(31, window.innerWidth / window.innerHeight, 0.05, 35);
+
+  const maxAniso = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+
+  function createSeededRandom(seed) {
+    let s = seed % 2147483647;
+    if (s <= 0) s += 2147483646;
+    return function() {
+      s = (s * 16807) % 2147483647;
+      return (s - 1) / 2147483646;
+    };
+  }
+
+  function makeCanvasTexture(w, h, drawFn, opts) {
+    const options = opts || {};
+    const c = document.createElement('canvas');
+    c.width = w;
+    c.height = h;
+    const ctx = c.getContext('2d');
+    drawFn(ctx, w, h);
+    const tex = new THREE.CanvasTexture(c);
+    if (options.repeatX || options.repeatY) {
+      tex.wrapS = THREE.RepeatWrapping;
+      tex.wrapT = THREE.RepeatWrapping;
+      tex.repeat.set(options.repeatX || 1, options.repeatY || 1);
+    }
+    if (options.srgb && 'colorSpace' in tex && THREE.SRGBColorSpace) {
+      tex.colorSpace = THREE.SRGBColorSpace;
+    }
+    tex.anisotropy = maxAniso;
+    tex.needsUpdate = true;
+    return tex;
+  }
+
+  // 构建程序化全景环境贴图（左侧清冷障子窗晨光 + 右侧温暖土墙漫反射），供青瓷、青铜、茶汤高光反射
+  function buildStudioEnvironment() {
+    const envTex = makeCanvasTexture(1024, 512, (ctx, w, h) => {
+      // 室内京都土墙基底渐变
+      const bg = ctx.createLinearGradient(0, 0, 0, h);
+      bg.addColorStop(0.0, '#17130f');
+      bg.addColorStop(0.45, '#30271f');
+      bg.addColorStop(0.55, '#241c15');
+      bg.addColorStop(1.0, '#0f0b08');
+      ctx.fillStyle = bg;
+      ctx.fillRect(0, 0, w, h);
+
+      // 左侧障子窗大面积清冷晨光高光带（给青瓷与铜炉提供逼真的窗格眼神光）
+      const winX = w * 0.16;
+      const winY = h * 0.22;
+      const winW = w * 0.22;
+      const winH = h * 0.44;
+
+      const winGlow = ctx.createRadialGradient(
+        winX + winW * 0.5, winY + winH * 0.5, 10,
+        winX + winW * 0.5, winY + winH * 0.5, winW * 0.95
+      );
+      winGlow.addColorStop(0.0, 'rgba(235, 244, 255, 0.95)');
+      winGlow.addColorStop(0.5, 'rgba(188, 210, 232, 0.55)');
+      winGlow.addColorStop(1.0, 'rgba(60, 75, 92, 0.0)');
+      ctx.fillStyle = winGlow;
+      ctx.fillRect(0, 0, w * 0.5, h);
+
+      ctx.fillStyle = '#e8f1fa';
+      ctx.fillRect(winX, winY, winW, winH);
+
+      // 反射中的障子木格暗线
+      ctx.fillStyle = '#2d2219';
+      for (let i = 0; i <= 4; i++) {
+        ctx.fillRect(winX + (winW / 4) * i - 2, winY, 4, winH);
+      }
+      for (let j = 0; j <= 5; j++) {
+        ctx.fillRect(winX, winY + (winH / 5) * j - 2, winW, 4);
+      }
+
+      // 右侧室内暖色漫反射柔光
+      const warmBounce = ctx.createRadialGradient(w * 0.72, h * 0.46, 10, w * 0.72, h * 0.46, w * 0.28);
+      warmBounce.addColorStop(0.0, 'rgba(255, 198, 138, 0.65)');
+      warmBounce.addColorStop(0.5, 'rgba(196, 136, 82, 0.25)');
+      warmBounce.addColorStop(1.0, 'rgba(40, 28, 18, 0.0)');
+      ctx.fillStyle = warmBounce;
+      ctx.fillRect(w * 0.4, 0, w * 0.6, h);
+    }, { srgb: true });
+
+    envTex.mapping = THREE.EquirectangularReflectionMapping;
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    pmrem.compileEquirectangularShader();
+    const envRT = pmrem.fromEquirectangular(envTex);
+    scene.environment = envRT.texture;
+    envTex.dispose();
+    pmrem.dispose();
+  }
+
+  buildStudioEnvironment();
+
+  // ============================================================================
+  // 2. 高精度程序化材质贴图库 (1024 / 2048 分辨率)
+  // ============================================================================
+  const textures = {};
+
+  function buildProceduralTextures() {
+    const rand = createSeededRandom(202604);
+
+    // 2.1 胡桃老木茶桌贴图（色彩 + 凹凸粗糙度）
+    const woodBumpCanvas = document.createElement('canvas');
+    woodBumpCanvas.width = 1024;
+    woodBumpCanvas.height = 1024;
+    const wbCtx = woodBumpCanvas.getContext('2d');
+
+    textures.walnutColor = makeCanvasTexture(1024, 1024, (ctx, w, h) => {
+      ctx.fillStyle = '#291a11';
+      ctx.fillRect(0, 0, w, h);
+      wbCtx.fillStyle = '#787878';
+      wbCtx.fillRect(0, 0, w, h);
+
+      for (let y = 0; y < h; y++) {
+        const n1 = Math.sin(y * 0.022) * 18 + Math.cos(y * 0.075) * 6;
+        const grain = Math.sin((y + n1) * 0.14) * 0.5 + 0.5;
+        const r = Math.floor(34 + grain * 24);
+        const g = Math.floor(21 + grain * 15);
+        const b = Math.floor(14 + grain * 10);
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(0, y, w, 1);
+
+        const bv = Math.floor(105 + grain * 36);
+        wbCtx.fillStyle = `rgb(${bv},${bv},${bv})`;
+        wbCtx.fillRect(0, y, w, 1);
+      }
+
+      // 木材导管棕眼与包浆光泽变化
+      for (let i = 0; i < 4200; i++) {
+        const x = rand() * w;
+        const y = rand() * h;
+        const len = 18 + rand() * 95;
+        const dark = rand() > 0.35;
+        ctx.fillStyle = dark ? 'rgba(12, 7, 4, 0.22)' : 'rgba(82, 52, 34, 0.12)';
+        ctx.fillRect(x, y, len, 1 + rand() * 1.8);
+
+        wbCtx.fillStyle = dark ? 'rgba(55,55,55,0.35)' : 'rgba(155,155,155,0.22)';
+        ctx.fillRect(x, y, len, 1.2);
+      }
+    }, { repeatX: 2, repeatY: 1, srgb: true });
+
+    textures.walnutBump = new THREE.CanvasTexture(woodBumpCanvas);
+    textures.walnutBump.wrapS = THREE.RepeatWrapping;
+    textures.walnutBump.wrapT = THREE.RepeatWrapping;
+    textures.walnutBump.repeat.set(2, 1);
+    textures.walnutBump.anisotropy = maxAniso;
+
+    // 2.2 京都聚乐土墙（暖灰黄泥 + 细小稻草纤维与矿物颗粒）
+    const wallBumpCanvas = document.createElement('canvas');
+    wallBumpCanvas.width = 1024;
+    wallBumpCanvas.height = 1024;
+    const wlmCtx = wallBumpCanvas.getContext('2d');
+
+    textures.plasterWall = makeCanvasTexture(1024, 1024, (ctx, w, h) => {
+      const g = ctx.createLinearGradient(0, 0, w, h);
+      g.addColorStop(0.0, '#6b5e4e');
+      g.addColorStop(0.5, '#615445');
+      g.addColorStop(1.0, '#524639');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+
+      wlmCtx.fillStyle = '#808080';
+      wlmCtx.fillRect(0, 0, w, h);
+
+      // 抹泥云状肌理
+      for (let i = 0; i < 360; i++) {
+        const x = rand() * w;
+        const y = rand() * h;
+        const rad = 30 + rand() * 90;
+        const rg = ctx.createRadialGradient(x, y, 2, x, y, rad);
+        const tint = rand() > 0.5 ? 'rgba(122, 108, 90, 0.06)' : 'rgba(58, 48, 38, 0.06)';
+        rg.addColorStop(0, tint);
+        rg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = rg;
+        ctx.fillRect(x - rad, y - rad, rad * 2, rad * 2);
+      }
+
+      // 砂砾与极细微稻草筋
+      for (let i = 0; i < 9000; i++) {
+        const x = rand() * w;
+        const y = rand() * h;
+        const v = Math.floor(68 + rand() * 48);
+        ctx.fillStyle = `rgba(${v + 12}, ${v + 4}, ${v - 6}, 0.28)`;
+        ctx.fillRect(x, y, 1.8, 1.8);
+
+        const bv = Math.floor(90 + rand() * 75);
+        wlmCtx.fillStyle = `rgb(${bv},${bv},${bv})`;
+        wlmCtx.fillRect(x, y, 2, 2);
+      }
+
+      ctx.strokeStyle = 'rgba(145, 130, 104, 0.18)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 420; i++) {
+        const x = rand() * w;
+        const y = rand() * h;
+        const ang = rand() * Math.PI * 2;
+        const l = 6 + rand() * 14;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.lineTo(x + Math.cos(ang) * l, y + Math.sin(ang) * l);
+        ctx.stroke();
+      }
+    }, { repeatX: 2, repeatY: 2, srgb: true });
+
+    textures.plasterBump = new THREE.CanvasTexture(wallBumpCanvas);
+    textures.plasterBump.wrapS = THREE.RepeatWrapping;
+    textures.plasterBump.wrapT = THREE.RepeatWrapping;
+    textures.plasterBump.repeat.set(2, 2);
+
+    // 2.3 榻榻米蔺草编织纹理
+    const tatamiBumpCanvas = document.createElement('canvas');
+    tatamiBumpCanvas.width = 512;
+    tatamiBumpCanvas.height = 512;
+    const tbCtx = tatamiBumpCanvas.getContext('2d');
+
+    textures.tatami = makeCanvasTexture(512, 512, (ctx, w, h) => {
+      ctx.fillStyle = '#5e5942';
+      ctx.fillRect(0, 0, w, h);
+      tbCtx.fillStyle = '#808080';
+      tbCtx.fillRect(0, 0, w, h);
+
+      for (let y = 0; y < h; y += 3) {
+        const tone = 82 + Math.floor(Math.sin(y * 0.4) * 8 + (rand() - 0.5) * 10);
+        ctx.fillStyle = `rgb(${tone + 6}, ${tone + 2}, ${tone - 18})`;
+        ctx.fillRect(0, y, w, 2);
+
+        tbCtx.fillStyle = y % 6 === 0 ? '#a8a8a8' : '#585858';
+        tbCtx.fillRect(0, y, w, 2);
+      }
+      // 纵向经线压痕
+      for (let x = 0; x < w; x += 8) {
+        ctx.fillStyle = 'rgba(32, 30, 20, 0.22)';
+        ctx.fillRect(x, 0, 2, h);
+        tbCtx.fillStyle = '#404040';
+        tbCtx.fillRect(x, 0, 2, h);
+      }
+    }, { repeatX: 6, repeatY: 6, srgb: true });
+
+    textures.tatamiBump = new THREE.CanvasTexture(tatamiBumpCanvas);
+    textures.tatamiBump.wrapS = THREE.RepeatWrapping;
+    textures.tatamiBump.wrapT = THREE.RepeatWrapping;
+    textures.tatamiBump.repeat.set(6, 6);
+
+    // 2.4 宣德古青铜三足炉（熟铜包浆、局部暗绿氧化层与弦纹凹凸）
+    const bronzeRoughCanvas = document.createElement('canvas');
+    bronzeRoughCanvas.width = 1024;
+    bronzeRoughCanvas.height = 1024;
+    const brCtx = bronzeRoughCanvas.getContext('2d');
+
+    textures.bronzeColor = makeCanvasTexture(1024, 1024, (ctx, w, h) => {
+      const grad = ctx.createLinearGradient(0, 0, 0, h);
+      grad.addColorStop(0.0, '#4a3522');
+      grad.addColorStop(0.28, '#664a30');
+      grad.addColorStop(0.55, '#3b2919');
+      grad.addColorStop(0.82, '#543c26');
+      grad.addColorStop(1.0, '#291c11');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      brCtx.fillStyle = '#626262';
+      brCtx.fillRect(0, 0, w, h);
+
+      for (let i = 0; i < 4500; i++) {
+        const x = rand() * w;
+        const y = rand() * h;
+        const r = 3 + rand() * 14;
+        const patina = rand() < 0.14;
+        if (patina) {
+          ctx.fillStyle = `rgba(54, 78, 64, ${0.06 + rand() * 0.12})`;
+          brCtx.fillStyle = `rgba(145, 145, 145, ${0.15 + rand() * 0.2})`;
+        } else {
+          const warm = rand() > 0.45;
+          ctx.fillStyle = warm ? 'rgba(138, 102, 64, 0.07)' : 'rgba(22, 15, 9, 0.12)';
+          brCtx.fillStyle = warm ? 'rgba(72, 72, 72, 0.15)' : 'rgba(115, 115, 115, 0.15)';
+        }
+        ctx.beginPath();
+        ctx.arc(x, y, r, 0, Math.PI * 2);
+        ctx.fill();
+
+        brCtx.beginPath();
+        brCtx.arc(x, y, r, 0, Math.PI * 2);
+        brCtx.fill();
+      }
+    }, { repeatX: 2, repeatY: 1, srgb: true });
+
+    textures.bronzeRoughness = new THREE.CanvasTexture(bronzeRoughCanvas);
+    textures.bronzeRoughness.wrapS = THREE.RepeatWrapping;
+    textures.bronzeRoughness.wrapT = THREE.RepeatWrapping;
+    textures.bronzeRoughness.repeat.set(2, 1);
+
+    // 2.5 炉内细腻草木香灰（真实微颗粒与自然涟漪起伏）
+    const ashBumpCanvas = document.createElement('canvas');
+    ashBumpCanvas.width = 1024;
+    ashBumpCanvas.height = 1024;
+    const abCtx = ashBumpCanvas.getContext('2d');
+
+    textures.incenseAsh = makeCanvasTexture(1024, 1024, (ctx, w, h) => {
+      ctx.fillStyle = '#9c968c';
+      ctx.fillRect(0, 0, w, h);
+      abCtx.fillStyle = '#808080';
+      abCtx.fillRect(0, 0, w, h);
+
+      // 中心插香处微暗与环状理灰纹理
+      const cg = ctx.createRadialGradient(w * 0.5, h * 0.5, 6, w * 0.5, h * 0.5, w * 0.48);
+      cg.addColorStop(0.0, 'rgba(68, 63, 56, 0.35)');
+      cg.addColorStop(0.35, 'rgba(158, 152, 142, 0.08)');
+      cg.addColorStop(0.82, 'rgba(132, 126, 118, 0.15)');
+      cg.addColorStop(1.0, 'rgba(54, 50, 44, 0.55)');
+      ctx.fillStyle = cg;
+      ctx.fillRect(0, 0, w, h);
+
+      for (let i = 0; i < 28000; i++) {
+        const x = rand() * w;
+        const y = rand() * h;
+        const d = Math.floor(122 + (rand() - 0.5) * 58);
+        ctx.fillStyle = `rgb(${d}, ${d - 3}, ${d - 8})`;
+        ctx.fillRect(x, y, 1.6, 1.6);
+
+        const bv = Math.floor(70 + rand() * 115);
+        abCtx.fillStyle = `rgb(${bv},${bv},${bv})`;
+        abCtx.fillRect(x, y, 2.0, 2.0);
+      }
+    }, { srgb: true });
+
+    textures.ashBump = new THREE.CanvasTexture(ashBumpCanvas);
+    textures.ashBump.anisotropy = maxAniso;
+
+    // 2.6 线香香粉涂层表面纹理（米棕檀香木粉颗粒与植物纤维感）
+    const stickBumpCanvas = document.createElement('canvas');
+    stickBumpCanvas.width = 256;
+    stickBumpCanvas.height = 1024;
+    const sbCtx = stickBumpCanvas.getContext('2d');
+
+    textures.incenseStick = makeCanvasTexture(256, 1024, (ctx, w, h) => {
+      ctx.fillStyle = '#c6b394';
+      ctx.fillRect(0, 0, w, h);
+      sbCtx.fillStyle = '#808080';
+      sbCtx.fillRect(0, 0, w, h);
+
+      for (let i = 0; i < 14000; i++) {
+        const x = rand() * w;
+        const y = rand() * h;
+        const delta = (rand() - 0.5) * 34;
+        const r = Math.floor(178 + delta);
+        const g = Math.floor(152 + delta * 0.85);
+        const b = Math.floor(121 + delta * 0.7);
+        ctx.fillStyle = `rgb(${r},${g},${b})`;
+        ctx.fillRect(x, y, 1.5, 2.5 + rand() * 4);
+
+        const bv = Math.floor(85 + rand() * 90);
+        sbCtx.fillStyle = `rgb(${bv},${bv},${bv})`;
+        sbCtx.fillRect(x, y, 1.8, 3.0);
+      }
+    }, { srgb: true });
+
+    textures.stickBump = new THREE.CanvasTexture(stickBumpCanvas);
+    textures.stickBump.anisotropy = maxAniso;
+
+    // 2.7 宜兴紫泥紫砂纹理（砂感金星颗粒）
+    const zishaBumpCanvas = document.createElement('canvas');
+    zishaBumpCanvas.width = 512;
+    zishaBumpCanvas.height = 512;
+    const zbCtx = zishaBumpCanvas.getContext('2d');
+
+    textures.zisha = makeCanvasTexture(512, 512, (ctx, w, h) => {
+      ctx.fillStyle = '#4f2d22';
+      ctx.fillRect(0, 0, w, h);
+      zbCtx.fillStyle = '#808080';
+      zbCtx.fillRect(0, 0, w, h);
+
+      for (let i = 0; i < 12000; i++) {
+        const x = rand() * w;
+        const y = rand() * h;
+        const isQuartz = rand() < 0.08;
+        if (isQuartz) {
+          ctx.fillStyle = 'rgba(182, 142, 106, 0.45)';
+          zbCtx.fillStyle = '#b8b8b8';
+        } else {
+          const dark = rand() > 0.5;
+          ctx.fillStyle = dark ? 'rgba(48, 24, 16, 0.35)' : 'rgba(104, 62, 46, 0.28)';
+          zbCtx.fillStyle = dark ? '#646464' : '#989898';
+        }
+        ctx.fillRect(x, y, 1.6, 1.6);
+        zbCtx.fillRect(x, y, 1.8, 1.8);
+      }
+    }, { srgb: true });
+
+    textures.zishaBump = new THREE.CanvasTexture(zishaBumpCanvas);
+
+    // 2.8 宋代粉青/天青汝窑开片釉纹理
+    textures.celadon = makeCanvasTexture(512, 512, (ctx, w, h) => {
+      const g = ctx.createLinearGradient(0, 0, 0, h);
+      g.addColorStop(0.0, '#8ba399');
+      g.addColorStop(0.5, '#7c968b');
+      g.addColorStop(1.0, '#688076');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+
+      // 极淡蝉翼冰裂纹开片
+      ctx.strokeStyle = 'rgba(48, 62, 56, 0.16)';
+      ctx.lineWidth = 1;
+      for (let i = 0; i < 85; i++) {
+        let x = rand() * w;
+        let y = rand() * h;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        for (let s = 0; s < 4; s++) {
+          x += (rand() - 0.5) * 48;
+          y += (rand() - 0.5) * 48;
+          ctx.lineTo(x, y);
+        }
+        ctx.stroke();
+      }
+    }, { srgb: true });
+
+    // 2.9 障子窗和纸（云龙纸纤维 + 窗外清冷竹叶剪影投影）
+    textures.shojiPaper = makeCanvasTexture(1024, 1024, (ctx, w, h) => {
+      const grad = ctx.createLinearGradient(0, 0, w, h);
+      grad.addColorStop(0.0, '#d8e4ee');
+      grad.addColorStop(0.55, '#c6d4e0');
+      grad.addColorStop(1.0, '#aebdc9');
+      ctx.fillStyle = grad;
+      ctx.fillRect(0, 0, w, h);
+
+      // 窗外竹竿与竹叶柔和失焦剪影
+      ctx.save();
+      ctx.filter = 'blur(8px)';
+      ctx.strokeStyle = 'rgba(54, 72, 86, 0.32)';
+      ctx.lineWidth = 14;
+      ctx.beginPath();
+      ctx.moveTo(w * 0.18, h);
+      ctx.quadraticCurveTo(w * 0.34, h * 0.45, w * 0.52, -20);
+      ctx.stroke();
+
+      ctx.lineWidth = 9;
+      ctx.beginPath();
+      ctx.moveTo(w * 0.62, h);
+      ctx.quadraticCurveTo(w * 0.68, h * 0.5, w * 0.82, h * 0.08);
+      ctx.stroke();
+
+      // 竹叶簇剪影
+      ctx.fillStyle = 'rgba(48, 66, 80, 0.28)';
+      const leafClusters = [
+        [0.32, 0.28], [0.38, 0.22], [0.28, 0.36],
+        [0.44, 0.42], [0.70, 0.32], [0.75, 0.25],
+        [0.64, 0.48], [0.48, 0.18]
+      ];
+      leafClusters.forEach(([cx, cy]) => {
+        for (let k = 0; k < 5; k++) {
+          ctx.save();
+          ctx.translate(cx * w + (rand() - 0.5) * 40, cy * h + (rand() - 0.5) * 40);
+          ctx.rotate(-0.4 + (rand() - 0.5) * 0.9);
+          ctx.beginPath();
+          ctx.ellipse(0, 0, 42 + rand() * 25, 8 + rand() * 4, 0, 0, Math.PI * 2);
+          ctx.fill();
+          ctx.restore();
+        }
+      });
+      ctx.restore();
+
+      // 和纸桑皮纤维
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.26)';
+      ctx.lineWidth = 1.2;
+      for (let i = 0; i < 900; i++) {
+        const x = rand() * w;
+        const y = rand() * h;
+        ctx.beginPath();
+        ctx.moveTo(x, y);
+        ctx.quadraticCurveTo(x + (rand() - 0.5) * 28, y + (rand() - 0.5) * 28, x + (rand() - 0.5) * 42, y + (rand() - 0.5) * 42);
+        ctx.stroke();
+      }
+    }, { srgb: true });
+
+    // 2.10 墙面挂轴书画（宋式绫锦装裱 + 宣纸「修身养性」书法 + 水墨竹石远山 + 朱文印章）
+    textures.hangingScroll = makeCanvasTexture(1024, 2048, (ctx, w, h) => {
+      // 浅米褐宋锦装裱外框
+      ctx.fillStyle = '#8b7e6a';
+      ctx.fillRect(0, 0, w, h);
+
+      // 绫边暗纹
+      ctx.strokeStyle = 'rgba(62, 54, 42, 0.16)';
+      ctx.lineWidth = 1;
+      for (let y = 0; y < h; y += 8) {
+        ctx.beginPath();
+        ctx.moveTo(0, y);
+        ctx.lineTo(w, y);
+        ctx.stroke();
+      }
+
+      // 天头与地脚内镶牙色细锦边
+      const padX = 86;
+      const padTop = 230;
+      const padBot = 190;
+      const innerW = w - padX * 2;
+      const innerH = h - padTop - padBot;
+
+      ctx.fillStyle = '#4a3d2f';
+      ctx.fillRect(padX - 8, padTop - 8, innerW + 16, innerH + 16);
+
+      // 熟宣纸画心
+      const paperGrad = ctx.createLinearGradient(0, padTop, 0, padTop + innerH);
+      paperGrad.addColorStop(0.0, '#dfd5c3');
+      paperGrad.addColorStop(0.5, '#d8ccb8');
+      paperGrad.addColorStop(1.0, '#cfc2ac');
+      ctx.fillStyle = paperGrad;
+      ctx.fillRect(padX, padTop, innerW, innerH);
+
+      // 宣纸陈年纤维斑迹
+      for (let i = 0; i < 2400; i++) {
+        ctx.fillStyle = rand() > 0.5 ? 'rgba(255,250,240,0.12)' : 'rgba(150,132,106,0.08)';
+        ctx.fillRect(padX + rand() * innerW, padTop + rand() * innerH, 2 + rand() * 14, 1.5);
+      }
+
+      // 远景淡墨山峦云气（米家云山意境）
+      ctx.save();
+      ctx.beginPath();
+      ctx.rect(padX, padTop, innerW, innerH);
+      ctx.clip();
+
+      const drawMistyMountain = (baseY, peakH, alpha, seedOffset) => {
+        const mGrad = ctx.createLinearGradient(0, baseY - peakH, 0, baseY + 120);
+        mGrad.addColorStop(0.0, `rgba(38, 36, 33, ${alpha})`);
+        mGrad.addColorStop(0.65, `rgba(52, 49, 44, ${alpha * 0.45})`);
+        mGrad.addColorStop(1.0, 'rgba(216, 204, 184, 0.0)');
+        ctx.fillStyle = mGrad;
+        ctx.beginPath();
+        ctx.moveTo(padX, baseY + 120);
+        for (let x = padX; x <= padX + innerW; x += 16) {
+          const nx = (x - padX) / innerW;
+          const hCurve = Math.sin(nx * Math.PI) * peakH * (0.6 + 0.4 * Math.sin(nx * 5.5 + seedOffset))
+            + Math.cos(nx * 13.0 + seedOffset) * 18;
+          ctx.lineTo(x, baseY - Math.max(0, hCurve));
+        }
+        ctx.lineTo(padX + innerW, baseY + 120);
+        ctx.closePath();
+        ctx.fill();
+      };
+
+      drawMistyMountain(padTop + innerH * 0.72, 240, 0.22, 1.1);
+      drawMistyMountain(padTop + innerH * 0.82, 190, 0.34, 3.4);
+
+      // 水墨写意墨竹（画面左下部斜出，留白疏朗）
+      const drawBambooStalk = (x0, y0, angle, segLen, segs, startW) => {
+        let cx = x0;
+        let cy = y0;
+        for (let s = 0; s < segs; s++) {
+          const nx = cx + Math.sin(angle) * segLen;
+          const ny = cy - Math.cos(angle) * segLen;
+          ctx.strokeStyle = `rgba(28, 26, 24, ${0.72 - s * 0.06})`;
+          ctx.lineWidth = Math.max(2.5, startW - s * 1.1);
+          ctx.lineCap = 'round';
+          ctx.beginPath();
+          ctx.moveTo(cx, cy);
+          ctx.lineTo(nx, ny);
+          ctx.stroke();
+
+          // 竹节抱节墨线
+          ctx.strokeStyle = 'rgba(18, 16, 15, 0.85)';
+          ctx.lineWidth = 2.5;
+          ctx.beginPath();
+          ctx.moveTo(nx - 7, ny);
+          ctx.lineTo(nx + 7, ny);
+          ctx.stroke();
+
+          cx = nx + Math.sin(angle) * 4;
+          cy = ny - Math.cos(angle) * 4;
+          angle += 0.035;
+        }
+      };
+
+      drawBambooStalk(padX + 140, padTop + innerH - 30, 0.22, 128, 6, 9.5);
+      drawBambooStalk(padX + 95, padTop + innerH - 10, 0.34, 105, 5, 6.5);
+
+      // 浓淡相间撇竹叶
+      const drawInkLeaf = (lx, ly, ang, len, wid, opacity) => {
+        ctx.save();
+        ctx.translate(lx, ly);
+        ctx.rotate(ang);
+        ctx.fillStyle = `rgba(24, 22, 20, ${opacity})`;
+        ctx.beginPath();
+        ctx.moveTo(0, 0);
+        ctx.quadraticCurveTo(len * 0.45, -wid, len, 0);
+        ctx.quadraticCurveTo(len * 0.45, wid * 0.65, 0, 0);
+        ctx.fill();
+        ctx.restore();
+      };
+
+      const leafNodes = [
+        [padX + 260, padTop + innerH - 420, 0.82],
+        [padX + 310, padTop + innerH - 560, 0.68],
+        [padX + 355, padTop + innerH - 680, 0.78],
+        [padX + 220, padTop + innerH - 310, 0.55]
+      ];
+      leafNodes.forEach(([nx, ny, op]) => {
+        drawInkLeaf(nx, ny, 0.35, 92, 13, op);
+        drawInkLeaf(nx, ny, 0.68, 108, 14, op * 0.9);
+        drawInkLeaf(nx, ny, 1.05, 78, 11, op * 0.75);
+        drawInkLeaf(nx - 14, ny + 12, -2.35, 74, 10, op * 0.6);
+      });
+
+      // 右上主书法：本次随机格言竖排（楷行兼备笔意）
+      ctx.fillStyle = '#1d1b18';
+      ctx.font = '500 106px "Kaiti SC", "STKaiti", "Songti SC", "STSong", "Noto Serif CJK SC", serif';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+
+      const chars = scrollChars;
+      const charX = padX + innerW * 0.68;
+      const charStartY = padTop + 210;
+      const charGap = chars.length > 6 ? 132 : 152;
+
+      chars.forEach((ch, idx) => {
+        ctx.save();
+        ctx.translate(charX + (idx % 2 === 0 ? -3 : 4), charStartY + idx * charGap);
+        ctx.rotate((idx - 1.5) * 0.015);
+        ctx.fillText(ch, 0, 0);
+        ctx.restore();
+      });
+
+      const textBottom = charStartY + (chars.length - 1) * charGap;
+
+      // 题款小字（随机）
+      ctx.fillStyle = 'rgba(36, 33, 29, 0.78)';
+      ctx.font = '32px "Kaiti SC", "STKaiti", "Songti SC", serif';
+      const insc = scrollInscription;
+      for (let i = 0; i < insc.length; i++) {
+        ctx.fillText(insc[i], padX + innerW * 0.50, textBottom + 80 + i * 44);
+      }
+
+      // 两枚朱红印章（白文 + 朱文，随机识文）
+      const sealX = padX + innerW * 0.50 - 22;
+      const sealY1 = textBottom + 120 + insc.length * 44;
+      ctx.fillStyle = '#9e281d';
+      ctx.fillRect(sealX, sealY1, 44, 44);
+      ctx.fillStyle = '#dfd5c3';
+      ctx.font = '22px "Songti SC", serif';
+      ctx.fillText(scrollSealChars[0], sealX + 22, sealY1 + 14);
+      ctx.fillText(scrollSealChars[1], sealX + 22, sealY1 + 33);
+
+      const sealY2 = sealY1 + 58;
+      ctx.strokeStyle = '#9e281d';
+      ctx.lineWidth = 3;
+      ctx.strokeRect(sealX + 2, sealY2, 40, 40);
+      ctx.fillStyle = '#9e281d';
+      ctx.font = '20px "Songti SC", serif';
+      ctx.fillText(scrollSealChars[0], sealX + 22, sealY2 + 21);
+
+      ctx.restore();
+    }, { srgb: true });
+
+    // 2.11 亚麻茶巾编织纹理
+    textures.teaCloth = makeCanvasTexture(256, 256, (ctx, w, h) => {
+      ctx.fillStyle = '#4c463d';
+      ctx.fillRect(0, 0, w, h);
+      for (let y = 0; y < h; y += 2) {
+        ctx.fillStyle = y % 4 === 0 ? 'rgba(92, 85, 74, 0.35)' : 'rgba(42, 38, 32, 0.35)';
+        ctx.fillRect(0, y, w, 1);
+      }
+      for (let x = 0; x < w; x += 2) {
+        ctx.fillStyle = x % 4 === 0 ? 'rgba(88, 80, 70, 0.28)' : 'rgba(38, 34, 28, 0.28)';
+        ctx.fillRect(x, 0, 1, h);
+      }
+    }, { repeatX: 3, repeatY: 3, srgb: true });
+
+    // 2.12 柔和径向辉光与底部接触阴影贴图
+    textures.radialGlow = makeCanvasTexture(128, 128, (ctx, w, h) => {
+      const g = ctx.createRadialGradient(w * 0.5, h * 0.5, 0, w * 0.5, h * 0.5, w * 0.5);
+      g.addColorStop(0.0, 'rgba(255, 255, 255, 1.0)');
+      g.addColorStop(0.22, 'rgba(255, 232, 200, 0.55)');
+      g.addColorStop(0.55, 'rgba(255, 180, 120, 0.14)');
+      g.addColorStop(1.0, 'rgba(255, 140, 80, 0.0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    });
+
+    textures.contactShadow = makeCanvasTexture(128, 128, (ctx, w, h) => {
+      const g = ctx.createRadialGradient(w * 0.5, h * 0.5, 0, w * 0.5, h * 0.5, w * 0.5);
+      g.addColorStop(0.0, 'rgba(5, 3, 2, 0.85)');
+      g.addColorStop(0.45, 'rgba(8, 5, 3, 0.52)');
+      g.addColorStop(0.78, 'rgba(10, 7, 4, 0.14)');
+      g.addColorStop(1.0, 'rgba(10, 7, 4, 0.0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, w, h);
+    });
+  }
+
+  buildProceduralTextures();
+
+  // 辅助：在器物底部添加柔和环境遮蔽接触阴影，消除浮空感
+  function addContactShadow(parent, x, y, z, scaleX, scaleZ, opacity) {
+    const m = new THREE.Mesh(
+      new THREE.PlaneGeometry(1, 1),
+      new THREE.MeshBasicMaterial({
+        map: textures.contactShadow,
+        transparent: true,
+        opacity: opacity !== undefined ? opacity : 0.72,
+        depthWrite: false
+      })
+    );
+    m.rotation.x = -Math.PI / 2;
+    m.position.set(x, y, z);
+    m.scale.set(scaleX, scaleZ, 1);
+    parent.add(m);
+    return m;
+  }
+
+  // ============================================================================
+  // 3. 构建室内茶室书房建筑空间（障子窗、聚乐土墙、榻榻米、木梁、书画挂轴、山茶青瓷瓶）
+  // ============================================================================
+  const roomGroup = new THREE.Group();
+  scene.add(roomGroup);
+
+  const wallMat = new THREE.MeshStandardMaterial({
+    map: textures.plasterWall,
+    bumpMap: textures.plasterBump,
+    bumpScale: 0.008,
+    roughness: 0.92,
+    metalness: 0.02
+  });
+
+  const archWoodMat = new THREE.MeshStandardMaterial({
+    map: textures.walnutColor,
+    bumpMap: textures.walnutBump,
+    bumpScale: 0.005,
+    color: 0x5c402c,
+    roughness: 0.64,
+    metalness: 0.04
+  });
+
+  // 背景土墙 (z = -2.25)
+  const backWall = new THREE.Mesh(new THREE.PlaneGeometry(11.0, 6.5), wallMat);
+  backWall.position.set(0, 2.2, -2.25);
+  backWall.receiveShadow = true;
+  roomGroup.add(backWall);
+
+  // 右侧土墙
+  const rightWall = new THREE.Mesh(new THREE.PlaneGeometry(9.0, 6.5), wallMat);
+  rightWall.rotation.y = -Math.PI / 2;
+  rightWall.position.set(3.8, 2.2, 0.5);
+  rightWall.receiveShadow = true;
+  roomGroup.add(rightWall);
+
+  // 左侧土墙与障子窗框 (x = -2.35)
+  const leftWallBack = new THREE.Mesh(new THREE.PlaneGeometry(9.0, 6.5), wallMat);
+  leftWallBack.rotation.y = Math.PI / 2;
+  leftWallBack.position.set(-2.38, 2.2, 0.5);
+  leftWallBack.receiveShadow = true;
+  roomGroup.add(leftWallBack);
+
+  // 障子窗组件（半透和纸 + 桧木细窗格 + 窗外竹影）
+  const shojiGroup = new THREE.Group();
+  shojiGroup.position.set(-2.33, 1.62, -0.32);
+  shojiGroup.rotation.y = Math.PI / 2;
+  roomGroup.add(shojiGroup);
+
+  const shojiW = 2.65;
+  const shojiH = 2.35;
+
+  const shojiPaperMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(shojiW, shojiH),
+    new THREE.MeshStandardMaterial({
+      map: textures.shojiPaper,
+      roughness: 0.85,
+      metalness: 0.0,
+      emissive: new THREE.Color(0xb8cee3),
+      emissiveMap: textures.shojiPaper,
+      emissiveIntensity: 0.92
+    })
+  );
+  shojiGroup.add(shojiPaperMesh);
+
+  // 桧木窗框与kumiko横竖木格（投射真实窗格光影）
+  const hinokiMat = new THREE.MeshStandardMaterial({
+    map: textures.walnutColor,
+    color: 0x6e4f36,
+    roughness: 0.58,
+    metalness: 0.04
+  });
+
+  // 外框
+  const frameThick = 0.055;
+  const frameDepth = 0.06;
+  const topFrame = new THREE.Mesh(new THREE.BoxGeometry(shojiW + frameThick * 2, frameThick, frameDepth), hinokiMat);
+  topFrame.position.set(0, shojiH * 0.5 + frameThick * 0.5, 0.02);
+  shojiGroup.add(topFrame);
+
+  const botFrame = new THREE.Mesh(new THREE.BoxGeometry(shojiW + frameThick * 2, frameThick, frameDepth), hinokiMat);
+  botFrame.position.set(0, -shojiH * 0.5 - frameThick * 0.5, 0.02);
+  shojiGroup.add(botFrame);
+
+  [-1, 1].forEach(dir => {
+    const sideF = new THREE.Mesh(new THREE.BoxGeometry(frameThick, shojiH, frameDepth), hinokiMat);
+    sideF.position.set(dir * (shojiW * 0.5 + frameThick * 0.5), 0, 0.02);
+    shojiGroup.add(sideF);
+  });
+
+  // 竖向窗棂 (6列)
+  const vCols = 6;
+  for (let i = 1; i < vCols; i++) {
+    const x = -shojiW * 0.5 + (shojiW / vCols) * i;
+    const isCenterMullion = i === 3;
+    const bar = new THREE.Mesh(
+      new THREE.BoxGeometry(isCenterMullion ? 0.032 : 0.014, shojiH, isCenterMullion ? 0.04 : 0.022),
+      hinokiMat
+    );
+    bar.position.set(x, 0, 0.015);
+    bar.castShadow = true;
+    shojiGroup.add(bar);
+  }
+
+  // 横向窗棂 (7行)
+  const hRows = 7;
+  for (let j = 1; j < hRows; j++) {
+    const y = -shojiH * 0.5 + (shojiH / hRows) * j;
+    const bar = new THREE.Mesh(new THREE.BoxGeometry(shojiW, 0.013, 0.02), hinokiMat);
+    bar.position.set(0, y, 0.015);
+    bar.castShadow = true;
+    shojiGroup.add(bar);
+  }
+
+  // 室内榻榻米地面与深色木地板缘侧 (y = -0.36)
+  const floorY = -0.36;
+  const tatamiMesh = new THREE.Mesh(
+    new THREE.PlaneGeometry(10.0, 9.0),
+    new THREE.MeshStandardMaterial({
+      map: textures.tatami,
+      bumpMap: textures.tatamiBump,
+      bumpScale: 0.006,
+      roughness: 0.86,
+      metalness: 0.02
+    })
+  );
+  tatamiMesh.rotation.x = -Math.PI / 2;
+  tatamiMesh.position.set(0, floorY, 0.2);
+  tatamiMesh.receiveShadow = true;
+  roomGroup.add(tatamiMesh);
+
+  // 榻榻米深青麻布缘边条（ヘリ）
+  const borderMat = new THREE.MeshStandardMaterial({
+    map: textures.teaCloth,
+    color: 0x1f2421,
+    roughness: 0.9
+  });
+  [-0.95, 0.85].forEach(zPos => {
+    const bStrip = new THREE.Mesh(new THREE.BoxGeometry(7.5, 0.004, 0.048), borderMat);
+    bStrip.position.set(0, floorY + 0.002, zPos);
+    bStrip.receiveShadow = true;
+    roomGroup.add(bStrip);
+  });
+
+  // 背景墙脚踢脚木梁、立柱与书画床之间（Tokonoma）结构
+  const baseboard = new THREE.Mesh(new THREE.BoxGeometry(10.0, 0.09, 0.06), archWoodMat);
+  baseboard.position.set(0, floorY + 0.045, -2.22);
+  baseboard.receiveShadow = true;
+  roomGroup.add(baseboard);
+
+  const tokonomaPillar = new THREE.Mesh(new THREE.BoxGeometry(0.13, 5.2, 0.13), archWoodMat);
+  tokonomaPillar.position.set(-1.32, 1.9, -2.18);
+  tokonomaPillar.castShadow = true;
+  tokonomaPillar.receiveShadow = true;
+  roomGroup.add(tokonomaPillar);
+
+  const rightPillar = new THREE.Mesh(new THREE.BoxGeometry(0.13, 5.2, 0.13), archWoodMat);
+  rightPillar.position.set(1.85, 1.9, -2.18);
+  rightPillar.castShadow = true;
+  rightPillar.receiveShadow = true;
+  roomGroup.add(rightPillar);
+
+  const topLintel = new THREE.Mesh(new THREE.BoxGeometry(9.0, 0.14, 0.16), archWoodMat);
+  topLintel.position.set(0, 2.88, -2.16);
+  topLintel.castShadow = true;
+  roomGroup.add(topLintel);
+
+  // --- 3.1 墙上挂轴书画（「修身养性」+ 水墨竹山 + 朱印 + 上下实木轴杆） ---
+  const scrollGroup = new THREE.Group();
+  scrollGroup.position.set(scrollHangX, scrollHangY, -2.20);
+scrollGroup.rotation.z = scrollHangTilt;
+  roomGroup.add(scrollGroup);
+
+  const scrollW = 0.78;
+  const scrollH = 1.56;
+
+  // 挂轴背后的微弱立体落影衬垫
+  const scrollShadow = new THREE.Mesh(
+    new THREE.PlaneGeometry(scrollW + 0.08, scrollH + 0.08),
+    new THREE.MeshBasicMaterial({
+      color: 0x080604,
+      transparent: true,
+      opacity: 0.42,
+      depthWrite: false
+    })
+  );
+  scrollShadow.position.set(0.015, -0.015, -0.008);
+  scrollGroup.add(scrollShadow);
+
+  // 宣纸挂轴主体（轻微自然垂挂弧度）
+  const scrollGeo = new THREE.PlaneGeometry(scrollW, scrollH, 8, 24);
+  const sPos = scrollGeo.attributes.position;
+  for (let i = 0; i < sPos.count; i++) {
+    const py = sPos.getY(i);
+    const curve = Math.cos((py / (scrollH * 0.5)) * Math.PI * 0.5) * 0.008;
+    sPos.setZ(i, curve);
+  }
+  scrollGeo.computeVertexNormals();
+
+  const scrollMesh = new THREE.Mesh(
+    scrollGeo,
+    new THREE.MeshStandardMaterial({
+      map: textures.hangingScroll,
+      roughness: 0.86,
+      metalness: 0.02
+    })
+  );
+  scrollMesh.castShadow = true;
+  scrollMesh.receiveShadow = true;
+  scrollGroup.add(scrollMesh);
+
+  // 上部天杆与挂绳
+  const rollerMat = new THREE.MeshStandardMaterial({
+    map: textures.walnutColor,
+    color: 0x24150d,
+    roughness: 0.35,
+    metalness: 0.1
+  });
+  const topBar = new THREE.Mesh(new THREE.CylinderGeometry(0.010, 0.010, scrollW + 0.05, 20), rollerMat);
+  topBar.rotation.z = Math.PI / 2;
+  topBar.position.set(0, scrollH * 0.5 + 0.006, 0.006);
+  scrollGroup.add(topBar);
+
+  // 下部地轴（紫檀重轴 + 骨质轴头）
+  const bottomRoller = new THREE.Mesh(new THREE.CylinderGeometry(0.018, 0.018, scrollW + 0.09, 28), rollerMat);
+  bottomRoller.rotation.z = Math.PI / 2;
+  bottomRoller.position.set(0, -scrollH * 0.5 - 0.012, 0.014);
+  bottomRoller.castShadow = true;
+  scrollGroup.add(bottomRoller);
+
+  const knobMat = new THREE.MeshStandardMaterial({
+    color: 0xd9ceb8,
+    roughness: 0.25,
+    metalness: 0.05
+  });
+  [-1, 1].forEach(dir => {
+    const knob = new THREE.Mesh(new THREE.CylinderGeometry(0.019, 0.017, 0.026, 24), knobMat);
+    knob.rotation.z = Math.PI / 2;
+    knob.position.set(dir * (scrollW * 0.5 + 0.055), -scrollH * 0.5 - 0.012, 0.014);
+    scrollGroup.add(knob);
+  });
+
+  // 挂绳与铜钉
+  const cordMat = new THREE.MeshBasicMaterial({ color: 0x3b2c1e });
+  [-1, 1].forEach(dir => {
+    const cord = new THREE.Mesh(new THREE.CylinderGeometry(0.002, 0.002, 0.28, 6), cordMat);
+    cord.position.set(dir * 0.13, scrollH * 0.5 + 0.09, 0.004);
+    cord.rotation.z = dir * 0.62;
+    scrollGroup.add(cord);
+  });
+  const nailPin = new THREE.Mesh(
+    new THREE.SphereGeometry(0.009, 12, 12),
+    new THREE.MeshStandardMaterial({ color: 0x9c7b4c, metalness: 0.8, roughness: 0.3 })
+  );
+  nailPin.position.set(0, scrollH * 0.5 + 0.175, 0.005);
+  scrollGroup.add(nailPin);
+
+  // ============================================================================
+  // 4. 深色实木低茶桌与桌面器物（紫砂壶、两只青瓷茶杯、青铜三足香炉、线香、茶巾、茶罐、青瓷花瓶）
+  // ============================================================================
+  const tableSurfaceY = 0.42;
+
+  const tableGroup = new THREE.Group();
+  scene.add(tableGroup);
+
+  const tableWoodMat = new THREE.MeshPhysicalMaterial({
+    map: textures.walnutColor,
+    bumpMap: textures.walnutBump,
+    bumpScale: 0.004,
+    roughnessMap: textures.walnutBump,
+    color: 0x472d1d,
+    roughness: 0.38,
+    metalness: 0.04,
+    clearcoat: 0.28,
+    clearcoatRoughness: 0.42
+  });
+
+  // 厚重实木整板桌面 (宽 1.66m, 深 0.86m, 厚 4.6cm)
+  const tableSlab = new THREE.Mesh(new THREE.BoxGeometry(1.66, 0.046, 0.86), tableWoodMat);
+  tableSlab.position.set(0, tableSurfaceY - 0.023, 0.08);
+  tableSlab.castShadow = true;
+  tableSlab.receiveShadow = true;
+  tableGroup.add(tableSlab);
+
+  // 桌底内缩牙板与四只稳重方腿
+  const apronFrame = new THREE.Mesh(new THREE.BoxGeometry(1.48, 0.055, 0.72), tableWoodMat);
+  apronFrame.position.set(0, tableSurfaceY - 0.068, 0.08);
+  apronFrame.castShadow = true;
+  apronFrame.receiveShadow = true;
+  tableGroup.add(apronFrame);
+
+  const legHeight = tableSurfaceY - floorY - 0.04;
+  const legPositions = [
+    [-0.71, -0.25],
+    [ 0.71, -0.25],
+    [-0.71,  0.41],
+    [ 0.71,  0.41]
+  ];
+  legPositions.forEach(([lx, lz]) => {
+    const leg = new THREE.Mesh(new THREE.BoxGeometry(0.068, legHeight, 0.068), tableWoodMat);
+    leg.position.set(lx, floorY + legHeight * 0.5, lz);
+    leg.castShadow = true;
+    leg.receiveShadow = true;
+    tableGroup.add(leg);
+    addContactShadow(tableGroup, lx, floorY + 0.002, lz, 0.24, 0.24, 0.78);
+  });
+
+  // 桌面下方榻榻米大范围柔和遮蔽阴影
+  addContactShadow(tableGroup, 0, floorY + 0.001, 0.08, 1.85, 1.05, 0.65);
+
+  // --- 4.1 折叠亚麻茶巾（承托紫砂壶与品茗杯） ---
+  const teaClothMesh = new THREE.Mesh(
+    new THREE.BoxGeometry(0.32, 0.008, 0.20),
+    new THREE.MeshStandardMaterial({
+      map: textures.teaCloth,
+      bumpMap: textures.teaCloth,
+      bumpScale: 0.003,
+      roughness: 0.92,
+      metalness: 0.0
+    })
+  );
+  teaClothMesh.position.set(-0.26, tableSurfaceY + 0.004, 0.05);
+  teaClothMesh.rotation.y = 0.06;
+  teaClothMesh.receiveShadow = true;
+  teaClothMesh.castShadow = true;
+  tableGroup.add(teaClothMesh);
+
+  // --- 4.2 宜兴紫砂西施/石瓢壶（位于茶桌中左，曲线圆润真实） ---
+  const teapotGroup = new THREE.Group();
+  teapotGroup.position.set(-0.29, tableSurfaceY + 0.008, 0.03);
+  teapotGroup.rotation.y = -0.38;
+  tableGroup.add(teapotGroup);
+
+  const zishaMat = new THREE.MeshStandardMaterial({
+    map: textures.zisha,
+    bumpMap: textures.zishaBump,
+    bumpScale: 0.0035,
+    roughness: 0.46,
+    metalness: 0.06
+  });
+
+  // 壶身车削曲面
+  const potProfile = [
+    new THREE.Vector2(0.000, 0.002),
+    new THREE.Vector2(0.042, 0.002),
+    new THREE.Vector2(0.045, 0.008),
+    new THREE.Vector2(0.064, 0.026),
+    new THREE.Vector2(0.072, 0.052),
+    new THREE.Vector2(0.066, 0.078),
+    new THREE.Vector2(0.048, 0.096),
+    new THREE.Vector2(0.042, 0.102),
+    new THREE.Vector2(0.044, 0.106),
+    new THREE.Vector2(0.038, 0.106),
+    new THREE.Vector2(0.038, 0.098)
+  ];
+  const potBody = new THREE.Mesh(new THREE.LatheGeometry(potProfile, 48), zishaMat);
+  potBody.castShadow = true;
+  potBody.receiveShadow = true;
+  teapotGroup.add(potBody);
+
+  // 壶盖与宝珠壶钮
+  const lidProfile = [
+    new THREE.Vector2(0.000, 0.114),
+    new THREE.Vector2(0.040, 0.103),
+    new THREE.Vector2(0.036, 0.100),
+    new THREE.Vector2(0.000, 0.102)
+  ];
+  const potLid = new THREE.Mesh(new THREE.LatheGeometry(lidProfile, 36), zishaMat);
+  potLid.castShadow = true;
+  teapotGroup.add(potLid);
+
+  const finialBead = new THREE.Mesh(new THREE.SphereGeometry(0.0105, 24, 24), zishaMat);
+  finialBead.scale.set(1, 0.82, 1);
+  finialBead.position.y = 0.119;
+  finialBead.castShadow = true;
+  teapotGroup.add(finialBead);
+
+  // 弯流壶嘴
+  const spoutCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0.058, 0.048, 0),
+    new THREE.Vector3(0.082, 0.066, 0),
+    new THREE.Vector3(0.098, 0.094, 0)
+  ]);
+  const spoutGeo = new THREE.TubeGeometry(spoutCurve, 20, 0.0095, 16, false);
+  const spoutMesh = new THREE.Mesh(spoutGeo, zishaMat);
+  spoutMesh.castShadow = true;
+  teapotGroup.add(spoutMesh);
+
+  // 耳形壶把
+  const handleCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(-0.052, 0.086, 0),
+    new THREE.Vector3(-0.096, 0.082, 0),
+    new THREE.Vector3(-0.092, 0.042, 0),
+    new THREE.Vector3(-0.056, 0.032, 0)
+  ]);
+  const handleMesh = new THREE.Mesh(new THREE.TubeGeometry(handleCurve, 24, 0.0072, 16, false), zishaMat);
+  handleMesh.castShadow = true;
+  teapotGroup.add(handleMesh);
+
+  addContactShadow(teapotGroup, 0, 0.001, 0, 0.17, 0.17, 0.75);
+
+  // --- 4.3 两只宋式天青汝窑茶杯（内盛琥珀色熟普/乌龙茶汤 + 袅袅微弱茶气） ---
+  const celadonMat = new THREE.MeshPhysicalMaterial({
+    map: textures.celadon,
+    color: 0x9cb5ab,
+    roughness: 0.14,
+    metalness: 0.02,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.08,
+    reflectivity: 0.85
+  });
+
+  const teaLiquorMat = new THREE.MeshPhysicalMaterial({
+    color: 0x7a3812,
+    roughness: 0.05,
+    metalness: 0.0,
+    clearcoat: 1.0,
+    clearcoatRoughness: 0.04,
+    transparent: true,
+    opacity: 0.92
+  });
+
+  const cupProfile = [
+    new THREE.Vector2(0.000, 0.002),
+    new THREE.Vector2(0.017, 0.002),
+    new THREE.Vector2(0.019, 0.009),
+    new THREE.Vector2(0.031, 0.026),
+    new THREE.Vector2(0.036, 0.048),
+    new THREE.Vector2(0.034, 0.048),
+    new THREE.Vector2(0.028, 0.026),
+    new THREE.Vector2(0.016, 0.011),
+    new THREE.Vector2(0.000, 0.010)
+  ];
+  const cupGeo = new THREE.LatheGeometry(cupProfile, 40);
+
+  const cupPositions = [
+    { x: -0.10, z: 0.16, yBase: tableSurfaceY },
+    { x: -0.20, z: 0.25, yBase: tableSurfaceY }
+  ];
+
+  cupPositions.forEach(cp => {
+    const cGroup = new THREE.Group();
+    cGroup.position.set(cp.x, cp.yBase, cp.z);
+
+    const cupMesh = new THREE.Mesh(cupGeo, celadonMat);
+    cupMesh.castShadow = true;
+    cupMesh.receiveShadow = true;
+    cGroup.add(cupMesh);
+
+    const teaLiquid = new THREE.Mesh(new THREE.CircleGeometry(0.032, 32), teaLiquorMat);
+    teaLiquid.rotation.x = -Math.PI / 2;
+    teaLiquid.position.y = 0.039;
+    cGroup.add(teaLiquid);
+
+    addContactShadow(cGroup, 0, 0.001, 0, 0.085, 0.085, 0.72);
+    tableGroup.add(cGroup);
+  });
+
+  // --- 4.4 锡制/黑陶小茶罐（桌左后方，平衡构图） ---
+  const caddyGroup = new THREE.Group();
+  caddyGroup.position.set(-0.46, tableSurfaceY, -0.11);
+  tableGroup.add(caddyGroup);
+
+  const caddyMat = new THREE.MeshStandardMaterial({
+    color: 0x262320,
+    roughness: 0.34,
+    metalness: 0.45
+  });
+  const caddyProfile = [
+    new THREE.Vector2(0.000, 0.001),
+    new THREE.Vector2(0.036, 0.001),
+    new THREE.Vector2(0.046, 0.032),
+    new THREE.Vector2(0.045, 0.082),
+    new THREE.Vector2(0.034, 0.102),
+    new THREE.Vector2(0.035, 0.118),
+    new THREE.Vector2(0.000, 0.120)
+  ];
+  const caddyMesh = new THREE.Mesh(new THREE.LatheGeometry(caddyProfile, 36), caddyMat);
+  caddyMesh.castShadow = true;
+  caddyMesh.receiveShadow = true;
+  caddyGroup.add(caddyMesh);
+
+  // 茶罐黄铜腰线点缀
+  const caddyBrassRing = new THREE.Mesh(
+    new THREE.CylinderGeometry(0.0355, 0.0355, 0.003, 32),
+    new THREE.MeshStandardMaterial({ color: 0xb89054, metalness: 0.85, roughness: 0.28 })
+  );
+  caddyBrassRing.position.y = 0.104;
+  caddyGroup.add(caddyBrassRing);
+  addContactShadow(caddyGroup, 0, 0.001, 0, 0.11, 0.11, 0.72);
+
+  // --- 4.5 左后方高颈青瓷胆瓶与山茶竹枝（呼应墙上书画） ---
+  const vaseGroup = new THREE.Group();
+  vaseGroup.position.set(-0.62, tableSurfaceY, -0.22);
+  tableGroup.add(vaseGroup);
+
+  const vaseProfile = [
+    new THREE.Vector2(0.000, 0.001),
+    new THREE.Vector2(0.042, 0.001),
+    new THREE.Vector2(0.068, 0.065),
+    new THREE.Vector2(0.062, 0.130),
+    new THREE.Vector2(0.026, 0.195),
+    new THREE.Vector2(0.023, 0.255),
+    new THREE.Vector2(0.027, 0.268),
+    new THREE.Vector2(0.022, 0.268),
+    new THREE.Vector2(0.019, 0.200)
+  ];
+  const vaseMesh = new THREE.Mesh(new THREE.LatheGeometry(vaseProfile, 44), celadonMat);
+  vaseMesh.castShadow = true;
+  vaseMesh.receiveShadow = true;
+  vaseGroup.add(vaseMesh);
+  addContactShadow(vaseGroup, 0, 0.001, 0, 0.16, 0.16, 0.75);
+
+  // 瓶中斜插的一枝清瘦山茶木枝与绿叶白蕊
+  const branchMat = new THREE.MeshStandardMaterial({ color: 0x332419, roughness: 0.85 });
+  const branchCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0.0, 0.22, 0.0),
+    new THREE.Vector3(0.02, 0.31, 0.01),
+    new THREE.Vector3(0.08, 0.39, 0.02),
+    new THREE.Vector3(0.16, 0.45, 0.01)
+  ]);
+  const branchMesh = new THREE.Mesh(new THREE.TubeGeometry(branchCurve, 20, 0.0038, 10, false), branchMat);
+  branchMesh.castShadow = true;
+  vaseGroup.add(branchMesh);
+
+  const subBranchCurve = new THREE.CatmullRomCurve3([
+    new THREE.Vector3(0.04, 0.34, 0.01),
+    new THREE.Vector3(-0.02, 0.41, -0.01),
+    new THREE.Vector3(-0.06, 0.46, -0.02)
+  ]);
+  const subBranchMesh = new THREE.Mesh(new THREE.TubeGeometry(subBranchCurve, 14, 0.0026, 8, false), branchMat);
+  subBranchMesh.castShadow = true;
+  vaseGroup.add(subBranchMesh);
+
+  const leafMat = new THREE.MeshStandardMaterial({
+    color: 0x2b3d26,
+    roughness: 0.42,
+    metalness: 0.02,
+    side: THREE.DoubleSide
+  });
+  const leafShape = new THREE.Shape();
+  leafShape.moveTo(0, 0);
+  leafShape.quadraticCurveTo(0.018, 0.012, 0.042, 0);
+  leafShape.quadraticCurveTo(0.018, -0.012, 0, 0);
+  const leafGeo = new THREE.ShapeGeometry(leafShape);
+
+  const leafSpecs = [
+    { pos: [0.06, 0.37, 0.015], rot: [0.3, 0.2, 0.4] },
+    { pos: [0.11, 0.42, 0.018], rot: [-0.4, -0.3, 0.2] },
+    { pos: [0.15, 0.45, 0.010], rot: [0.2, 0.5, -0.2] },
+    { pos: [-0.03, 0.42, -0.012], rot: [0.4, 2.4, -0.3] },
+    { pos: [-0.05, 0.45, -0.018], rot: [-0.3, 2.8, 0.2] }
+  ];
+  leafSpecs.forEach(ls => {
+    const lf = new THREE.Mesh(leafGeo, leafMat);
+    lf.position.set(ls.pos[0], ls.pos[1], ls.pos[2]);
+    lf.rotation.set(ls.rot[0], ls.rot[1], ls.rot[2]);
+    lf.castShadow = true;
+    vaseGroup.add(lf);
+  });
+
+  // 含苞待放的白山茶花蕾
+  const budMesh = new THREE.Mesh(
+    new THREE.SphereGeometry(0.011, 16, 16),
+    new THREE.MeshStandardMaterial({ color: 0xe8dfd1, roughness: 0.55 })
+  );
+  budMesh.scale.set(1.2, 0.9, 0.9);
+  budMesh.position.set(0.135, 0.438, 0.016);
+  vaseGroup.add(budMesh);
+
+  // ============================================================================
+  // 5. 核心主角：右前方古青铜三足双耳香炉 + 真实香灰 + 正在燃烧的线香 + 袅袅青烟
+  // ============================================================================
+  const sceneRefs = {
+    censerX: 0.26,
+    censerY: tableSurfaceY,
+    censerZ: 0.17,
+    ashSurfaceY: tableSurfaceY + 0.106,
+    stickFullLen: 0.215, // 21.5cm 真实线香露出长度
+    stickMinLen: 0.016,
+    currentTipWorld: new THREE.Vector3(0.26, tableSurfaceY + 0.32, 0.17)
+  };
+
+  const censerGroup = new THREE.Group();
+  censerGroup.position.set(sceneRefs.censerX, sceneRefs.censerY, sceneRefs.censerZ);
+  tableGroup.add(censerGroup);
+
+  const bronzeMat = new THREE.MeshPhysicalMaterial({
+    map: textures.bronzeColor,
+    roughnessMap: textures.bronzeRoughness,
+    bumpMap: textures.bronzeRoughness,
+    bumpScale: 0.0035,
+    color: 0x9e764e,
+    metalness: 0.82,
+    roughness: 0.36,
+    clearcoat: 0.22,
+    clearcoatRoughness: 0.35
+  });
+
+  // 宣德炉式青铜三足炉身（外径约 16cm，炉口有真实厚度与内壁）
+  const censerProfile = [
+    new THREE.Vector2(0.000, 0.022),
+    new THREE.Vector2(0.042, 0.022),
+    new THREE.Vector2(0.068, 0.034),
+    new THREE.Vector2(0.083, 0.056),
+    new THREE.Vector2(0.085, 0.078),
+    new THREE.Vector2(0.076, 0.098),
+    new THREE.Vector2(0.073, 0.108),
+    new THREE.Vector2(0.081, 0.116),
+    new THREE.Vector2(0.082, 0.120),
+    new THREE.Vector2(0.073, 0.120),
+    new THREE.Vector2(0.068, 0.110),
+    new THREE.Vector2(0.071, 0.092),
+    new THREE.Vector2(0.062, 0.060),
+    new THREE.Vector2(0.000, 0.056)
+  ];
+  const censerBody = new THREE.Mesh(new THREE.LatheGeometry(censerProfile, 64), bronzeMat);
+  censerBody.castShadow = true;
+  censerBody.receiveShadow = true;
+  censerGroup.add(censerBody);
+
+  // 三只饱满乳足
+  for (let i = 0; i < 3; i++) {
+    const ang = (i * Math.PI * 2) / 3 + Math.PI / 6;
+    const footProfile = [
+      new THREE.Vector2(0.000, 0.000),
+      new THREE.Vector2(0.011, 0.001),
+      new THREE.Vector2(0.016, 0.012),
+      new THREE.Vector2(0.019, 0.028),
+      new THREE.Vector2(0.022, 0.042)
+    ];
+    const footMesh = new THREE.Mesh(new THREE.LatheGeometry(footProfile, 24), bronzeMat);
+    const r = 0.050;
+    footMesh.position.set(Math.cos(ang) * r, 0.001, Math.sin(ang) * r);
+    footMesh.rotation.z = Math.cos(ang) * 0.14;
+    footMesh.rotation.x = -Math.sin(ang) * 0.14;
+    footMesh.castShadow = true;
+    footMesh.receiveShadow = true;
+    censerGroup.add(footMesh);
+    addContactShadow(censerGroup, Math.cos(ang) * r, 0.001, Math.sin(ang) * r, 0.055, 0.055, 0.85);
+  }
+
+  // 香炉整体底部柔和遮蔽阴影
+  addContactShadow(censerGroup, 0, 0.0015, 0, 0.21, 0.21, 0.68);
+
+  // 朝天双耳（桥耳/冲天耳造型）
+  [-1, 1].forEach(dir => {
+    const earCurve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(dir * 0.072, 0.096, 0),
+      new THREE.Vector3(dir * 0.098, 0.104, 0),
+      new THREE.Vector3(dir * 0.102, 0.132, 0),
+      new THREE.Vector3(dir * 0.082, 0.138, 0),
+      new THREE.Vector3(dir * 0.075, 0.117, 0)
+    ]);
+    const earMesh = new THREE.Mesh(new THREE.TubeGeometry(earCurve, 28, 0.0058, 16, false), bronzeMat);
+    earMesh.castShadow = true;
+    earMesh.receiveShadow = true;
+    censerGroup.add(earMesh);
+  });
+
+  // 炉内真实香灰床（高分段顶点起伏 + 中心插香微凹压痕）
+  const ashRadius = 0.0695;
+  const ashGeo = new THREE.CircleGeometry(ashRadius, 64, 16);
+  // CircleGeometry 默认只有外圈顶点，我们改用 PlaneGeometry 极坐标映射或细分网格以获得细腻内部起伏
+  const ashBedGeo = new THREE.RingGeometry(0.0001, ashRadius, 64, 18);
+  ashBedGeo.rotateX(-Math.PI / 2);
+  const ashPos = ashBedGeo.attributes.position;
+  for (let i = 0; i < ashPos.count; i++) {
+    const vx = ashPos.getX(i);
+    const vz = ashPos.getZ(i);
+    const dist = Math.sqrt(vx * vx + vz * vz);
+    const normR = dist / ashRadius;
+    // 整体微隆，插香根部有一圈极小的自然堆积与微凹
+    const dome = Math.cos(normR * Math.PI * 0.5) * 0.0055;
+    const ripples = Math.sin(dist * 210.0) * 0.00045 + Math.sin(vx * 95.0 + vz * 110.0) * 0.0006;
+    const rootIndent = -Math.exp(-dist * dist * 18000.0) * 0.0018;
+    ashPos.setY(i, dome + ripples + rootIndent);
+  }
+  ashBedGeo.computeVertexNormals();
+
+  const ashBedMesh = new THREE.Mesh(
+    ashBedGeo,
+    new THREE.MeshStandardMaterial({
+      map: textures.incenseAsh,
+      bumpMap: textures.ashBump,
+      bumpScale: 0.0035,
+      color: 0xa6a096,
+      roughness: 0.96,
+      metalness: 0.01
+    })
+  );
+  ashBedMesh.position.y = 0.104;
+  ashBedMesh.receiveShadow = true;
+  censerGroup.add(ashBedMesh);
+
+  // 落在炉灰表面的几小段断落灰白香灰
+  const fallenAshMat = new THREE.MeshStandardMaterial({
+    map: textures.incenseAsh,
+    color: 0xbcb6ac,
+    roughness: 0.95
+  });
+  const fallenPieces = [
+    { x: 0.012, z: 0.008, rotY: 0.4, len: 0.009 },
+    { x: -0.015, z: 0.011, rotY: 1.9, len: 0.007 },
+    { x: 0.006, z: -0.016, rotY: 2.6, len: 0.011 },
+    { x: -0.009, z: -0.007, rotY: 0.9, len: 0.006 }
+  ];
+  fallenPieces.forEach(fp => {
+    const piece = new THREE.Mesh(new THREE.CylinderGeometry(0.0011, 0.0012, fp.len, 10), fallenAshMat);
+    piece.position.set(fp.x, 0.109, fp.z);
+    piece.rotation.set(Math.PI * 0.49, fp.rotY, 0.08);
+    piece.castShadow = true;
+    censerGroup.add(piece);
+  });
+
+  // --- 5.1 照片级真实线香（直径 2.4mm、米棕香粉颗粒质感、轻微自然弯曲、顶端炭化+火头+微卷白灰） ---
+  const incenseAnchor = new THREE.Group();
+  incenseAnchor.position.set(sceneRefs.censerX, sceneRefs.ashSurfaceY, sceneRefs.censerZ);
+  // 自然插香倾角（绝不死板垂直）
+  incenseAnchor.rotation.z = -0.042;
+  incenseAnchor.rotation.x = 0.024;
+  scene.add(incenseAnchor);
+
+  // 根部香灰微掩小丘（让线香底端自然埋入灰中）
+  const rootMound = new THREE.Mesh(
+    new THREE.ConeGeometry(0.0038, 0.0032, 16),
+    ashBedMesh.material
+  );
+  rootMound.position.y = 0.0012;
+  incenseAnchor.add(rootMound);
+
+  // 香体网格（单位高度 1.0，底部在 y=0，带有极其微妙的自然有机弯曲）
+  const stickRadius = 0.00125; // 直径 2.5mm
+  const stickGeo = new THREE.CylinderGeometry(stickRadius * 0.96, stickRadius, 1.0, 20, 32);
+  stickGeo.translate(0, 0.5, 0);
+  const stPos = stickGeo.attributes.position;
+  for (let i = 0; i < stPos.count; i++) {
+    const py = stPos.getY(i); // 0 .. 1
+    const organicBendX = Math.sin(py * Math.PI) * 0.0011;
+    const organicBendZ = Math.sin(py * Math.PI * 1.5) * 0.0006;
+    stPos.setX(i, stPos.getX(i) + organicBendX);
+    stPos.setZ(i, stPos.getZ(i) + organicBendZ);
+  }
+  stickGeo.computeVertexNormals();
+
+  const stickMat = new THREE.MeshStandardMaterial({
+    map: textures.incenseStick,
+    bumpMap: textures.stickBump,
+    bumpScale: 0.0012,
+    roughness: 0.92,
+    metalness: 0.0
+  });
+
+  const incenseStickMesh = new THREE.Mesh(stickGeo, stickMat);
+  incenseStickMesh.castShadow = true;
+  incenseStickMesh.receiveShadow = true;
+  incenseStickMesh.scale.y = sceneRefs.stickFullLen;
+  incenseAnchor.add(incenseStickMesh);
+
+  // 烟必须从真正的香头升起：取香体顶端的世界坐标（含插香倾角与自然弯曲）
+  incenseAnchor.updateMatrixWorld(true);
+  const stickTipWorld = new THREE.Vector3(0, 1, 0).applyMatrix4(incenseStickMesh.matrixWorld);
+
+  // 顶端燃烧结构（紧随香体顶端）
+  const burningTipGroup = new THREE.Group();
+  burningTipGroup.position.y = sceneRefs.stickFullLen;
+  incenseAnchor.add(burningTipGroup);
+
+  // 1) 炭化黑段与极细暗红过渡圈 + 几毫米橙红余烬火头（一体式高精度着色器，拒绝大光球）
+  const emberTipUniforms = {
+    uTime: { value: 0 },
+    uPulse: { value: 1.0 }
+  };
+
+  const emberTipGeo = new THREE.CylinderGeometry(stickRadius * 0.88, stickRadius * 0.97, 0.0058, 24, 16);
+  emberTipGeo.translate(0, 0.0029, 0);
+
+  const emberTipMat = new THREE.ShaderMaterial({
+    uniforms: emberTipUniforms,
+    vertexShader: `
+      varying vec3 vPos;
+      varying vec3 vNormal;
+      void main() {
+        vPos = position;
+        vNormal = normalize(normalMatrix * normal);
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      uniform float uPulse;
+      varying vec3 vPos;
+      varying vec3 vNormal;
+
+      float hash(vec2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+      }
+
+      void main() {
+        // h: 0.0(下方与香体交界) -> 1.0(上方与白灰交界)
+        float h = clamp(vPos.y / 0.0058, 0.0, 1.0);
+        float angle = atan(vPos.z, vPos.x);
+        float grain = hash(vec2(floor(angle * 18.0), floor(h * 32.0)));
+        float wave = sin(angle * 5.0 + uTime * 1.8) * 0.03;
+
+        // 下部 0.0~0.42 为焦黑炭化段，中部 0.42~0.56 为极细暗红环，上部 0.56~0.96 为炽热橙红火头
+        vec3 rawWood = vec3(0.42, 0.32, 0.22);
+        vec3 blackChar = vec3(0.06, 0.05, 0.045);
+        vec3 darkCrimson = vec3(0.48, 0.05, 0.01);
+        vec3 glowingEmber = vec3(1.85, 0.44, 0.06) * uPulse;
+        vec3 hotCore = vec3(2.60, 1.05, 0.30) * uPulse;
+
+        float charMask = smoothstep(0.0, 0.16, h);
+        float redRingMask = smoothstep(0.36 + wave, 0.56 + wave, h);
+        float hotZoneMask = smoothstep(0.54 + wave, 0.82 + wave, h) * (1.0 - smoothstep(0.90, 1.0, h));
+
+        vec3 col = mix(rawWood, blackChar, charMask);
+        col = mix(col, darkCrimson, redRingMask);
+        col = mix(col, glowingEmber, hotZoneMask * (0.82 + 0.18 * grain));
+        col = mix(col, hotCore, pow(hotZoneMask, 2.6) * (0.65 + 0.35 * grain));
+
+        // 表面细微灰斑覆盖在火头表面（真实线香火头表面的薄灰壳感）
+        float ashFleck = smoothstep(0.74, 0.92, grain) * smoothstep(0.60, 0.85, h);
+        col = mix(col, vec3(0.35, 0.32, 0.30), ashFleck * 0.55);
+
+        gl_FragColor = vec4(col, 1.0);
+      }
+    `
+  });
+
+  const emberTipMesh = new THREE.Mesh(emberTipGeo, emberTipMat);
+  burningTipGroup.add(emberTipMesh);
+
+  // 2) 火头最顶端极小、轻微卷曲的灰白余灰帽（约 2.6mm 高）
+  const ashCapGeo = new THREE.CylinderGeometry(stickRadius * 0.68, stickRadius * 0.86, 0.0028, 20, 10);
+  ashCapGeo.translate(0, 0.0014, 0);
+  const acPos = ashCapGeo.attributes.position;
+  for (let i = 0; i < acPos.count; i++) {
+    const py = acPos.getY(i);
+    const ratio = py / 0.0028;
+    const curlX = ratio * ratio * 0.00055;
+    const curlZ = ratio * ratio * -0.00025;
+    acPos.setX(i, acPos.getX(i) + curlX);
+    acPos.setZ(i, acPos.getZ(i) + curlZ);
+  }
+  ashCapGeo.computeVertexNormals();
+
+  const ashCapMesh = new THREE.Mesh(
+    ashCapGeo,
+    new THREE.MeshStandardMaterial({
+      map: textures.incenseAsh,
+      bumpMap: textures.ashBump,
+      bumpScale: 0.0008,
+      color: 0xd4cfc7,
+      roughness: 0.95,
+      emissive: new THREE.Color(0x4a1203),
+      emissiveIntensity: 0.45
+    })
+  );
+  ashCapMesh.position.y = 0.0056;
+  burningTipGroup.add(ashCapMesh);
+
+  // 3) 极其克制的微距火头柔光晕（直径仅约 1.2cm，绝不变成假大光球）
+  const emberMicroGlow = new THREE.Sprite(
+    new THREE.SpriteMaterial({
+      map: textures.radialGlow,
+      color: 0xff5418,
+      transparent: true,
+      opacity: 0.72,
+      blending: THREE.AdditiveBlending,
+      depthWrite: false
+    })
+  );
+  emberMicroGlow.position.set(0, 0.0044, 0);
+  emberMicroGlow.scale.set(0.020, 0.020, 1);
+  burningTipGroup.add(emberMicroGlow);
+
+  // 余烬微弱近场点光源（仅轻微照亮青烟根部与炉口边缘）
+  const emberPointLight = new THREE.PointLight(0xff5b1f, 0.65, 0.60, 2.0);
+  emberPointLight.position.set(0, 0.005, 0);
+  burningTipGroup.add(emberPointLight);
+
+  // ============================================================================
+  // 6. 照片级真实蓝灰色线香青烟（底部极细垂直层流 -> 向上渐宽卷曲 -> 被冷白窗光照亮消散）
+  // ============================================================================
+  const smokeUniforms = {
+    uTime: { value: 0 },
+    uOrigin: { value: stickTipWorld.clone().add(new THREE.Vector3(0, 0.004, 0)) },
+    uEmberPulse: { value: 1.0 }
+  };
+
+  const smokeVertexShader = `
+    uniform float uTime;
+    uniform vec3 uOrigin;
+    attribute float aLayer;
+
+    varying vec2 vUv;
+    varying float vHeight;
+    varying float vLayer;
+
+    float hash11(float p) {
+      p = fract(p * 0.1031);
+      p *= p + 33.33;
+      p *= p + p;
+      return fract(p);
+    }
+
+    float noise2D(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      float n = i.x + i.y * 57.0;
+      return mix(
+        mix(hash11(n + 0.0), hash11(n + 1.0), f.x),
+        mix(hash11(n + 57.0), hash11(n + 58.0), f.x),
+        f.y
+      );
+    }
+
+    void main() {
+      vUv = uv;
+      vLayer = aLayer;
+
+      float h = uv.y; // 0(香头火头) -> 1(高处消散)
+      vHeight = h;
+
+      float plumeHeight = 1.28;
+      float yOffset = h * plumeHeight;
+
+      // 物理层流与湍流过渡：底部 0~0.20 几乎垂直上升，随后向右侧缓慢漂移并产生涡旋卷曲
+      float curlStart = smoothstep(0.04, 0.26, h);
+      float curlAmp = smoothstep(0.06, 0.90, h);
+      float t = uTime * 0.38 + aLayer * 1.047;
+
+      // 受左侧窗户微弱冷空气对流影响，整柱缓慢摆荡并向右后方漂移
+      float swayX = sin(uTime * 0.52 + h * 3.1) * pow(h, 1.25) * 0.050;
+      float swayZ = cos(uTime * 0.43 + h * 2.4) * pow(h, 1.30) * 0.032;
+      float driftX = pow(h, 1.55) * 0.09 + sin(uTime * 0.19) * pow(h, 1.8) * 0.05 + swayX;
+      float driftZ = pow(h, 1.60) * -0.045 + swayZ;
+
+      float n1 = noise2D(vec2(h * 4.6 - uTime * 0.45, aLayer * 2.1 + uTime * 0.10)) * 2.0 - 1.0;
+      float n2 = noise2D(vec2(h * 10.2 - uTime * 0.78, aLayer * 4.7 - uTime * 0.18)) * 2.0 - 1.0;
+
+      float swirlX = (sin(h * 8.5 - t * 2.2) * 0.045 + sin(h * 17.0 - t * 3.5 + aLayer) * 0.020 + n1 * 0.050) * curlStart * curlAmp;
+      float swirlZ = (cos(h * 7.8 - t * 2.0 + aLayer) * 0.040 + cos(h * 15.5 - t * 3.1) * 0.018 + n2 * 0.045) * curlStart * curlAmp;
+
+      // 香头几厘米的极细抖动，避免从火点起就是一条直线
+      float microX = sin(h * 46.0 - uTime * 1.9 + aLayer) * 0.0024 * smoothstep(0.0, 0.10, h);
+      float microZ = cos(h * 41.0 - uTime * 1.6) * 0.0018 * smoothstep(0.0, 0.10, h);
+      swirlX += microX;
+      swirlZ += microZ;
+
+      // 宽度包络：火头起始处极细（半宽约 1.4mm），向上自然扩散成轻柔云缕
+      float halfWidth = mix(0.0042, 0.082, pow(h, 1.45)) * (1.0 + 0.16 * sin(h * 11.0 - uTime * 0.9 + aLayer));
+
+      float angle = aLayer * 0.785398 + h * 2.4 + sin(uTime * 0.24 + h * 3.5) * 0.4;
+      vec3 sideVec = vec3(cos(angle), 0.0, sin(angle));
+
+      float centeredX = (uv.x - 0.5) * 2.0;
+      vec3 spinePos = uOrigin + vec3(driftX + swirlX, yOffset, driftZ + swirlZ);
+      vec3 worldPos = spinePos + sideVec * (centeredX * halfWidth);
+
+      gl_Position = projectionMatrix * viewMatrix * vec4(worldPos, 1.0);
+    }
+  `;
+
+  const smokeFragmentShader = `
+    uniform float uTime;
+    uniform float uEmberPulse;
+
+    varying vec2 vUv;
+    varying float vHeight;
+    varying float vLayer;
+
+    float hash(vec2 p) {
+      return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453123);
+    }
+
+    float vnoise(vec2 p) {
+      vec2 i = floor(p);
+      vec2 f = fract(p);
+      f = f * f * (3.0 - 2.0 * f);
+      float a = hash(i);
+      float b = hash(i + vec2(1.0, 0.0));
+      float c = hash(i + vec2(0.0, 1.0));
+      float d = hash(i + vec2(1.0, 1.0));
+      return mix(mix(a, b, f.x), mix(c, d, f.x), f.y);
+    }
+
+    float fbm(vec2 p) {
+      float v = 0.0;
+      float amp = 0.5;
+      mat2 rot = mat2(0.8, -0.6, 0.6, 0.8);
+      for (int i = 0; i < 4; i++) {
+        v += amp * vnoise(p);
+        p = rot * p * 2.02;
+        amp *= 0.5;
+      }
+      return v;
+    }
+
+    void main() {
+      float h = vHeight;
+      float x = vUv.x;
+
+      vec2 flowUv = vec2(x * 3.4 + vLayer * 1.71, h * 6.5 - uTime * 0.40);
+      float nA = fbm(flowUv);
+      float nB = fbm(vec2(x * 7.2 - nA * 1.45 + vLayer * 3.1, h * 13.0 - uTime * 0.66));
+
+      // 丝缕内部扭曲轴线：底部极其凝聚纤细，向上分裂为轻薄交织的丝绸卷曲状
+      float warpCenter = 0.5 + (nA - 0.5) * 0.46 * smoothstep(0.04, 0.38, h);
+      float dist = abs(x - warpCenter);
+      float edgeMask = smoothstep(0.49, 0.02, dist);
+
+      // 底部细丝核心 + 上部双股缠绕涡旋丝缕
+      float laminarCore = exp(-pow((x - warpCenter) / mix(0.095, 0.30, smoothstep(0.0, 0.35, h)), 2.0));
+      float secondaryStrand = exp(-pow((x - (0.5 - (nB - 0.5) * 0.42)) / 0.16, 2.0)) * smoothstep(0.10, 0.38, h);
+      float wispyVeil = smoothstep(0.22, 0.80, nB * 0.6 + nA * 0.4) * edgeMask;
+
+      float structure = mix(laminarCore, max(laminarCore * 0.65 + secondaryStrand * 0.55, wispyVeil), smoothstep(0.08, 0.32, h));
+
+      float fadeIn = smoothstep(0.0, 0.005, h);
+      float fadeOut = pow(1.0 - smoothstep(0.22, 0.98, h), 1.55);
+      float baseDensity = mix(1.20, 0.42, smoothstep(0.0, 0.85, h));
+
+      float alpha = structure * fadeIn * fadeOut * baseDensity;
+
+      // 丝缕断裂：低频团块 + 高频细纹，避免整条烟像一根实心白线
+      float breakup = smoothstep(0.16, 0.62, nA * 0.62 + nB * 0.52 + (1.0 - h) * 0.20);
+      alpha *= mix(0.62, 1.0, breakup);
+
+      if (alpha < 0.002) discard;
+
+      // 真实瑞利散射蓝灰色烟雾：根部几毫米受火头暖光映照，主体受冷窗光散射
+      vec3 emberColor = vec3(1.28, 0.46, 0.14) * uEmberPulse;
+      vec3 warmAsh = vec3(0.62, 0.59, 0.53);
+      vec3 coolAsh = vec3(0.48, 0.52, 0.59);
+      float coolMix = smoothstep(0.06, 0.62, h);
+      float emberFade = exp(-h * 21.0);
+      vec3 smokeColor = mix(warmAsh, coolAsh, coolMix);
+      smokeColor = mix(smokeColor, emberColor, emberFade * 0.75);
+      smokeColor += vec3(0.030, 0.036, 0.045) * pow(nB, 2.0) + (nB - 0.5) * vec3(0.02, 0.025, 0.03);
+      gl_FragColor = vec4(smokeColor, clamp(alpha, 0.0, 0.76));
+    }
+  `;
+
+  // 合并 4 条交叉丝带，一次 draw call 绘制整柱烟
+  function createRibbonGeometry(ribbonCount, segX, segY) {
+    const base = new THREE.PlaneGeometry(1, 1, segX, segY);
+    const vCount = base.attributes.position.count;
+    const iCount = base.index.count;
+    const positions = new Float32Array(vCount * 3 * ribbonCount);
+    const uvs = new Float32Array(vCount * 2 * ribbonCount);
+    const layers = new Float32Array(vCount * ribbonCount);
+    const indices = new Uint32Array(iCount * ribbonCount);
+    const srcPos = base.attributes.position.array;
+    const srcUv = base.attributes.uv.array;
+    const srcIdx = base.index.array;
+    for (let r = 0; r < ribbonCount; r++) {
+      positions.set(srcPos, r * vCount * 3);
+      uvs.set(srcUv, r * vCount * 2);
+      for (let v = 0; v < vCount; v++) layers[r * vCount + v] = r;
+      const off = r * vCount;
+      for (let k = 0; k < iCount; k++) indices[r * iCount + k] = srcIdx[k] + off;
+    }
+    const geo = new THREE.BufferGeometry();
+    geo.setAttribute('position', new THREE.BufferAttribute(positions, 3));
+    geo.setAttribute('uv', new THREE.BufferAttribute(uvs, 2));
+    geo.setAttribute('aLayer', new THREE.BufferAttribute(layers, 1));
+    geo.setIndex(new THREE.BufferAttribute(indices, 1));
+    return geo;
+  }
+
+  const smokeMaterial = new THREE.ShaderMaterial({
+    uniforms: smokeUniforms,
+    vertexShader: smokeVertexShader,
+    fragmentShader: smokeFragmentShader,
+    transparent: true,
+    depthWrite: false,
+    side: THREE.DoubleSide
+  });
+  const smokeMesh = new THREE.Mesh(createRibbonGeometry(4, 18, 140), smokeMaterial);
+  smokeMesh.frustumCulled = false;
+  smokeMesh.renderOrder = 8;
+  scene.add(smokeMesh);
+
+  // 高处极淡的散佚烟气，补上消散段
+  const wispCount = 42;
+  const wispGeo = new THREE.BufferGeometry();
+  const wispPos = new Float32Array(wispCount * 3);
+  const wispSeed = new Float32Array(wispCount * 2);
+  for (let i = 0; i < wispCount; i++) {
+    wispPos[i * 3] = stickTipWorld.x;
+    wispPos[i * 3 + 1] = stickTipWorld.y + 0.004;
+    wispPos[i * 3 + 2] = stickTipWorld.z;
+    wispSeed[i * 2] = i / wispCount;
+    wispSeed[i * 2 + 1] = (i * 1.6180339) % 1;
+  }
+  wispGeo.setAttribute('position', new THREE.BufferAttribute(wispPos, 3));
+  wispGeo.setAttribute('aSeed', new THREE.BufferAttribute(wispSeed, 2));
+  const wispMat = new THREE.ShaderMaterial({
+    uniforms: {
+      uTime: smokeUniforms.uTime,
+      uOrigin: smokeUniforms.uOrigin,
+      uTex: { value: textures.radialGlow }
+    },
+    vertexShader: `
+      uniform float uTime;
+      uniform vec3 uOrigin;
+      attribute vec2 aSeed;
+      varying float vAlpha;
+      void main() {
+        float life = fract(aSeed.x + uTime * 0.045);
+        float h = 0.35 + life * 0.8;
+        float y = h * 1.28;
+        float driftX = pow(h, 1.55) * 0.16 + sin(uTime * 0.2 + aSeed.y * 6.283) * (0.02 + life * 0.06);
+        float driftZ = pow(h, 1.60) * -0.065 + cos(uTime * 0.18 + aSeed.y * 6.283) * (0.015 + life * 0.045);
+        vec3 p = uOrigin + vec3(driftX, y, driftZ);
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = (30.0 + life * 95.0) * (1.0 / -mv.z);
+        vAlpha = sin(life * 3.1415926) * 0.055;
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D uTex;
+      varying float vAlpha;
+      void main() {
+        vec4 t = texture2D(uTex, gl_PointCoord);
+        gl_FragColor = vec4(vec3(0.57, 0.61, 0.67), t.a * vAlpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+  const wisps = new THREE.Points(wispGeo, wispMat);
+  wisps.frustumCulled = false;
+  wisps.renderOrder = 7;
+  scene.add(wisps);
+
+  // ============================================================================
+  // 7. 灯光：左侧障子窗冷白晨光 + 室内暖色反弹 + 极轻环境光
+  // ============================================================================
+  const hemiLight = new THREE.HemisphereLight(0xdce8f4, 0x24170f, 0.55);
+  scene.add(hemiLight);
+
+  const windowLight = new THREE.SpotLight(0xd9e8f7, 78, 0, 1.08, 0.55, 1.1);
+  windowLight.position.set(-2.05, 2.75, -0.30);
+  windowLight.target.position.set(0.1, 0.55, 0.12);
+  windowLight.castShadow = true;
+  windowLight.shadow.mapSize.set(2048, 2048);
+  windowLight.shadow.camera.near = 0.3;
+  windowLight.shadow.camera.far = 9;
+  windowLight.shadow.bias = -0.0006;
+  windowLight.shadow.normalBias = 0.018;
+  scene.add(windowLight);
+  scene.add(windowLight.target);
+
+  const windowFill = new THREE.PointLight(0xe7eef7, 3.2, 7.5, 2.0);
+  windowFill.position.set(-2.0, 1.9, -0.25);
+  scene.add(windowFill);
+
+  const warmBounce = new THREE.PointLight(0xffd2a0, 2.7, 6.5, 2.0);
+  warmBounce.position.set(1.2, 1.65, 1.15);
+  scene.add(warmBounce);
+
+  const warmRim = new THREE.PointLight(0xffb374, 1.1, 4.0, 2.0);
+  warmRim.position.set(1.8, 2.1, -1.15);
+  scene.add(warmRim);
+
+  const ambientLight = new THREE.AmbientLight(0x6a5a4a, 0.30);
+  scene.add(ambientLight);
+
+  // 空气尘埃：只在窗光柱附近轻轻浮动
+  const dustCount = 120;
+  const dustGeo = new THREE.BufferGeometry();
+  const dustPos = new Float32Array(dustCount * 3);
+  const dustSeed = new Float32Array(dustCount);
+  for (let i = 0; i < dustCount; i++) {
+    dustPos[i * 3] = -2.1 + Math.random() * 2.6;
+    dustPos[i * 3 + 1] = 0.3 + Math.random() * 2.4;
+    dustPos[i * 3 + 2] = -1.9 + Math.random() * 2.5;
+    dustSeed[i] = Math.random();
+  }
+  dustGeo.setAttribute('position', new THREE.BufferAttribute(dustPos, 3));
+  dustGeo.setAttribute('aSeed', new THREE.BufferAttribute(dustSeed, 1));
+  const dustMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: smokeUniforms.uTime, uTex: { value: textures.radialGlow } },
+    vertexShader: `
+      uniform float uTime;
+      attribute float aSeed;
+      varying float vAlpha;
+      void main() {
+        vec3 p = position;
+        p.x += sin(uTime * 0.11 + aSeed * 9.0) * 0.10;
+        p.y += sin(uTime * 0.07 + aSeed * 13.0) * 0.07;
+        p.z += cos(uTime * 0.09 + aSeed * 7.0) * 0.08;
+        vec4 mv = modelViewMatrix * vec4(p, 1.0);
+        gl_Position = projectionMatrix * mv;
+        gl_PointSize = (1.5 + fract(aSeed * 7.0) * 2.6) * (1.0 / -mv.z) * 9.0;
+        vAlpha = 0.06 + 0.08 * fract(aSeed * 5.0);
+      }
+    `,
+    fragmentShader: `
+      uniform sampler2D uTex;
+      varying float vAlpha;
+      void main() {
+        vec4 t = texture2D(uTex, gl_PointCoord);
+        gl_FragColor = vec4(vec3(0.86, 0.90, 0.96), t.a * vAlpha);
+      }
+    `,
+    transparent: true,
+    depthWrite: false,
+    blending: THREE.AdditiveBlending
+  });
+  const dust = new THREE.Points(dustGeo, dustMat);
+  dust.frustumCulled = false;
+  scene.add(dust);
+
+  // ============================================================================
+  // 8. 摄影机三机位：茶席 / 香篆微距 / 书画
+  // ============================================================================
+  const VIEWS = {
+    front: { pos: new THREE.Vector3(0.92, 1.46, 2.24), target: new THREE.Vector3(-0.10, 0.86, -0.46), fov: 42 },
+    close: { pos: new THREE.Vector3(0.56, 1.12, 1.42), target: new THREE.Vector3(0.26, 0.70, 0.17), fov: 31 },
+    scroll: { pos: new THREE.Vector3(scrollHangX, scrollHangY, 1.02), target: new THREE.Vector3(scrollHangX, scrollHangY, -2.20), fov: 33 }
+  };
+  const activeView = {
+    name: 'front',
+    pos: VIEWS.front.pos.clone(),
+    target: VIEWS.front.target.clone(),
+    fov: VIEWS.front.fov
+  };
+  const goal = {
+    pos: VIEWS.front.pos.clone(),
+    target: VIEWS.front.target.clone(),
+    fov: VIEWS.front.fov
+  };
+  const lookAtPoint = new THREE.Vector3().copy(activeView.target);
+  let yaw = 0;
+  let pitch = 0;
+
+  // 开场运镜：先展示整间茶室，再缓慢推进到香的特写；任何交互都会取消。
+  let introActive = true;
+  let introElapsed = 0;
+  let transitionBias = 1;
+  let transitionLeft = 0;
+  const INTRO_HOLD = 4.3;
+
+  function cancelIntro() {
+    introActive = false;
+    transitionBias = 1;
+    transitionLeft = 0;
+  }
+
+  function setView(name, silent) {
+    const v = VIEWS[name];
+    if (!v) return;
+    goal.pos.copy(v.pos);
+    goal.target.copy(v.target);
+    goal.fov = v.fov;
+    activeView.name = name;
+    yaw = 0;
+    pitch = 0;
+    dom.viewBtns.forEach(btn => btn.classList.toggle('active', btn.dataset.view === name));
+    if (!silent) emitHost('view:' + name);
+  }
+
+  window.shrineView = function(name, silent) {
+    cancelIntro();
+    setView(name, !!silent);
+  };
+
+  dom.viewBtns.forEach(btn => {
+    btn.addEventListener('click', () => window.shrineView(btn.dataset.view, false));
+  });
+
+  // 拖动环视（只在机位附近轻微偏移，不破坏构图）
+  let dragging = false;
+  let lastPointerX = 0;
+  let lastPointerY = 0;
+  const canvasEl = renderer.domElement;
+  canvasEl.style.touchAction = 'none';
+  canvasEl.addEventListener('pointerdown', e => {
+    cancelIntro();
+    dragging = true;
+    lastPointerX = e.clientX;
+    lastPointerY = e.clientY;
+    try { canvasEl.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+  canvasEl.addEventListener('pointermove', e => {
+    if (!dragging) return;
+    yaw = Math.max(-0.24, Math.min(0.24, yaw + (e.clientX - lastPointerX) * 0.0016));
+    pitch = Math.max(-0.12, Math.min(0.12, pitch + (e.clientY - lastPointerY) * 0.0011));
+    lastPointerX = e.clientX;
+    lastPointerY = e.clientY;
+  });
+  const endDrag = () => { dragging = false; };
+  canvasEl.addEventListener('pointerup', endDrag);
+  canvasEl.addEventListener('pointercancel', endDrag);
+  canvasEl.addEventListener('pointerleave', endDrag);
+
+  window.addEventListener('keydown', e => {
+    if (e.key === 'Escape') {
+      if (!appState.forced && appState.canSkip) emitHost('skip');
+      return;
+    }
+    if (e.key === '1') window.shrineView('front', false);
+    if (e.key === '2') window.shrineView('close', false);
+    if (e.key === '3') window.shrineView('scroll', false);
+    if (e.key === 'ArrowRight') {
+      const order = ['front', 'close', 'scroll'];
+      window.shrineView(order[(order.indexOf(activeView.name) + 1) % order.length], false);
+    }
+    if (e.key === 'ArrowLeft') {
+      const order = ['front', 'close', 'scroll'];
+      window.shrineView(order[(order.indexOf(activeView.name) + 2) % order.length], false);
+    }
+  });
+
+  dom.btnSkip.addEventListener('click', () => {
+    if (!appState.forced && appState.canSkip) emitHost('skip');
+  });
+  dom.btnPostpone.addEventListener('click', () => {
+    if (!appState.forced && appState.canPostpone) emitHost('postpone');
+  });
+
+  let lastW = 0;
+  let lastH = 0;
+  function resizeRenderer() {
+    const w = Math.max(1, window.innerWidth || document.documentElement.clientWidth || 1);
+    const h = Math.max(1, window.innerHeight || document.documentElement.clientHeight || 1);
+    if (w === lastW && h === lastH) return;
+    lastW = w;
+    lastH = h;
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 1.5));
+    renderer.setSize(w, h);
+    camera.aspect = w / h;
+    camera.updateProjectionMatrix();
+  }
+  window.addEventListener('resize', resizeRenderer);
+  if (window.ResizeObserver) {
+    new ResizeObserver(() => resizeRenderer()).observe(document.documentElement);
+  }
+
+  // ============================================================================
+  // 9. 渲染循环与首帧揭示
+  // ============================================================================
+  const clock = new THREE.Clock();
+  let elapsed = 0;
+  let firstFrame = true;
+
+  function updateCamera(dt) {
+    const k = 1 - Math.exp(-dt * 3.2 * transitionBias);
+    activeView.pos.lerp(goal.pos, k);
+    activeView.target.lerp(goal.target, k);
+    activeView.fov += (goal.fov - activeView.fov) * k;
+
+    const offset = activeView.pos.clone().sub(activeView.target);
+    const radius = Math.max(0.35, offset.length());
+    const theta = Math.atan2(offset.x, offset.z) + yaw;
+    const phi = Math.max(0.20, Math.min(Math.PI * 0.49, Math.acos(offset.y / radius) + pitch));
+    const base = new THREE.Vector3(
+      activeView.target.x + radius * Math.sin(phi) * Math.sin(theta),
+      activeView.target.y + radius * Math.cos(phi),
+      activeView.target.z + radius * Math.sin(phi) * Math.cos(theta)
+    );
+    base.x += Math.sin(elapsed * 0.21) * 0.006;
+    base.y += Math.sin(elapsed * 0.16 + 1.1) * 0.004;
+
+    camera.position.lerp(base, 1 - Math.exp(-dt * 4.5));
+    lookAtPoint.lerp(activeView.target, 1 - Math.exp(-dt * 4.5));
+    camera.lookAt(lookAtPoint);
+
+    if (Math.abs(camera.fov - activeView.fov) > 0.01) {
+      camera.fov = activeView.fov;
+      camera.updateProjectionMatrix();
+    }
+  }
+
+  function animate() {
+    const dt = Math.min(0.05, clock.getDelta());
+    elapsed += dt;
+
+    if (introActive) {
+      introElapsed += dt;
+      if (introElapsed >= INTRO_HOLD) {
+        introActive = false;
+        transitionBias = 0.42;
+        transitionLeft = 3.0;
+        setView('close', false);
+      }
+    }
+    if (transitionLeft > 0) {
+      transitionLeft -= dt;
+      if (transitionLeft <= 0) transitionBias = 1;
+    }
+
+    smokeUniforms.uTime.value = elapsed;
+    const pulse = 0.82 + 0.13 * Math.sin(elapsed * 6.2) + 0.06 * Math.sin(elapsed * 15.7);
+    smokeUniforms.uEmberPulse.value = pulse;
+    emberTipUniforms.uTime.value = elapsed;
+    emberTipUniforms.uPulse.value = pulse;
+    emberPointLight.intensity = 0.16 + 0.16 * pulse;
+    emberMicroGlow.material.opacity = 0.24 + 0.16 * pulse;
+    windowFill.intensity = 3.15 + 0.10 * Math.sin(elapsed * 0.5);
+
+    updateCamera(dt);
+    resizeRenderer();
+    renderer.render(scene, camera);
+
+    if (firstFrame) {
+      firstFrame = false;
+      dom.curtain.classList.add('fade-out');
+      setTimeout(() => dom.hud.classList.add('visible'), 1150);
+      emitHost('ready');
+    }
+    requestAnimationFrame(animate);
+  }
+
+  camera.position.copy(VIEWS.front.pos);
+  camera.lookAt(VIEWS.front.target);
+  renderHUD();
+  resizeRenderer();
+  requestAnimationFrame(animate);
+})();
+</script>
+</body>
+</html>

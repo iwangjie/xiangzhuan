@@ -1,0 +1,306 @@
+import { computed, signal, Storage } from "nsh";
+import { displays, Window } from "nsh/desktop";
+
+export type Phase = "idle" | "focus" | "rest" | "postpone";
+
+export interface Settings {
+  workMinutes: number;
+  restSeconds: number;
+  postponeMinutes: number;
+  allowSkip: boolean;
+  startAtLogin: boolean;
+}
+
+export interface Stats {
+  date: string;
+  focusMinutes: number;
+  rests: number;
+  skips: number;
+}
+
+export const DEFAULT_SETTINGS: Settings = {
+  workMinutes: 25,
+  restSeconds: 90,
+  postponeMinutes: 5,
+  allowSkip: true,
+  startAtLogin: false,
+};
+
+const SETTINGS_KEY = "xiangzhuan.settings.v1";
+const STATS_KEY = "xiangzhuan.stats.v1";
+
+export const settings = signal<Settings>({ ...DEFAULT_SETTINGS });
+export const settingsLoaded = signal(false);
+export const stats = signal<Stats>({ date: today(), focusMinutes: 0, rests: 0, skips: 0 });
+
+export const phase = signal<Phase>("idle");
+export const now = signal(Date.now());
+export const focusEnd = signal<number | null>(null);
+export const restEnd = signal<number | null>(null);
+export const restOpen = signal(false);
+export const restClosing = signal(false);
+export const restForced = signal(false);
+export const forceNext = signal(false);
+export const postpones = signal(0);
+export const loginError = signal<string | null>(null);
+
+/** What the next rest returns to, once it is over. */
+let restReturn: "focus" | "idle" = "focus";
+/** Whether the main window was on screen when the rest took it away. */
+let mainWasVisible = false;
+/** Guards the delayed close of the rest windows against a new rest. */
+let restGeneration = 0;
+
+export function today(): string {
+  const d = new Date();
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+export const workMs = computed(() => Math.max(1, settings().workMinutes) * 60_000);
+export const restMs = computed(() => Math.max(1, settings().restSeconds) * 1000);
+export const postponeMs = computed(() => Math.max(1, settings().postponeMinutes) * 60_000);
+
+/** How much is left in the current phase, in milliseconds. */
+export const remainingMs = computed(() => {
+  const p = phase();
+  const at = now();
+  if (p === "rest") return restEnd() == null ? restMs() : Math.max(0, restEnd()! - at);
+  if (p === "focus" || p === "postpone") return focusEnd() == null ? workMs() : Math.max(0, focusEnd()! - at);
+  return workMs();
+});
+
+/** The length of the current phase, in milliseconds. */
+export const totalMs = computed(() => {
+  const p = phase();
+  if (p === "rest") return restMs();
+  if (p === "postpone") return postponeMs();
+  return workMs();
+});
+
+/** How much of the current phase is left, from 1 to 0. */
+export const remainingPart = computed(() => {
+  const total = totalMs();
+  return total <= 0 ? 0 : Math.min(1, Math.max(0, remainingMs() / total));
+});
+
+export const phaseLabel = computed(() => {
+  switch (phase()) {
+    case "focus":
+      return "专注";
+    case "rest":
+      return "休息";
+    case "postpone":
+      return "延后";
+    default:
+      return "待燃";
+  }
+});
+
+export const phaseLine = computed(() => {
+  switch (phase()) {
+    case "focus":
+      return "香正在燃，别急。";
+    case "rest":
+      return restForced() ? "这炷香，要燃尽。" : "把眼睛从屏幕上移开。";
+    case "postpone":
+      return "再处理一小会儿。";
+    default:
+      return "准备好时，点一炷香。";
+  }
+});
+
+export const canSkipNow = computed(
+  () => phase() === "rest" && settings().allowSkip && !restForced(),
+);
+export const canPostponeNow = computed(() => phase() === "rest" && !restForced());
+
+export function formatClock(ms: number): string {
+  const total = Math.max(0, Math.ceil(ms / 1000));
+  const m = Math.floor(total / 60);
+  const s = total % 60;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
+export function ensureToday(): void {
+  const date = today();
+  if (stats().date !== date) {
+    stats.set({ date, focusMinutes: 0, rests: 0, skips: 0 });
+  }
+}
+
+function addFocusMinutes(minutes: number): void {
+  ensureToday();
+  stats.update((s) => ({ ...s, focusMinutes: s.focusMinutes + Math.max(1, Math.round(minutes)) }));
+}
+
+function addRest(): void {
+  ensureToday();
+  stats.update((s) => ({ ...s, rests: s.rests + 1 }));
+}
+
+function addSkip(): void {
+  ensureToday();
+  stats.update((s) => ({ ...s, skips: s.skips + 1 }));
+}
+
+export function loadSettings(): void {
+  void Storage.getItem(SETTINGS_KEY)
+    .then((raw) => {
+      if (!raw) return;
+      const next = { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) };
+      settings.set(next);
+    })
+    .catch(() => {})
+    .finally(() => settingsLoaded.set(true));
+
+  void Storage.getItem(STATS_KEY)
+    .then((raw) => {
+      if (!raw) return;
+      const next = JSON.parse(raw) as Partial<Stats>;
+      const date = today();
+      if (next.date === date) stats.set({ ...stats(), ...next });
+      else stats.set({ date, focusMinutes: 0, rests: 0, skips: 0 });
+    })
+    .catch(() => {});
+}
+
+export function saveSettings(): void {
+  if (!settingsLoaded()) return;
+  void Storage.setItem(SETTINGS_KEY, JSON.stringify(settings())).catch(() => {});
+}
+
+export function saveStats(): void {
+  void Storage.setItem(STATS_KEY, JSON.stringify(stats())).catch(() => {});
+}
+
+export function updateSettings(patch: Partial<Settings>): void {
+  settings.update((s) => ({ ...s, ...patch }));
+}
+
+export function startFocus(): void {
+  if (phase() === "rest") return;
+  phase.set("focus");
+  focusEnd.set(Date.now() + workMs());
+}
+
+export function startRest(completedWork = false): void {
+  if (phase() === "rest") return;
+  if (completedWork) addFocusMinutes(settings().workMinutes);
+  restReturn = phase() === "idle" ? "idle" : "focus";
+  restForced.set(forceNext());
+  restGeneration++;
+  restClosing.set(false);
+  restOpen.set(true);
+  restEnd.set(Date.now() + restMs());
+  phase.set("rest");
+  const main = Window.get("main");
+  mainWasVisible = main?.state()?.visible ?? false;
+  if (mainWasVisible) main?.hide();
+  saveStats();
+}
+
+function closeRestWindows(): void {
+  const generation = ++restGeneration;
+  restClosing.set(true);
+  setTimeout(() => {
+    if (generation !== restGeneration) return;
+    restOpen.set(false);
+    restClosing.set(false);
+  }, 420);
+}
+
+function revealMain(): void {
+  if (!mainWasVisible) return;
+  mainWasVisible = false;
+  const generation = restGeneration;
+  setTimeout(() => {
+    if (generation !== restGeneration) return;
+    Window.get("main")?.show();
+  }, 420);
+}
+
+function nextWork(): void {
+  if (restReturn === "idle") {
+    phase.set("idle");
+    focusEnd.set(null);
+  } else {
+    phase.set("focus");
+    focusEnd.set(Date.now() + workMs());
+  }
+}
+
+export function finishRest(): void {
+  if (phase() !== "rest") return;
+  restEnd.set(null);
+  restForced.set(false);
+  postpones.set(0);
+  forceNext.set(false);
+  addRest();
+  closeRestWindows();
+  nextWork();
+  revealMain();
+  saveStats();
+}
+
+export function postponeRest(): void {
+  if (!canPostponeNow()) return;
+  const n = postpones() + 1;
+  postpones.set(n);
+  if (n >= 3) forceNext.set(true);
+  restEnd.set(null);
+  restForced.set(false);
+  closeRestWindows();
+  phase.set("postpone");
+  focusEnd.set(Date.now() + postponeMs());
+  revealMain();
+}
+
+export function skipRest(): void {
+  if (!canSkipNow()) return;
+  forceNext.set(true);
+  restEnd.set(null);
+  restForced.set(false);
+  addSkip();
+  closeRestWindows();
+  nextWork();
+  revealMain();
+  saveStats();
+}
+
+export function stopCycle(): void {
+  if (phase() === "rest") {
+    restEnd.set(null);
+    restForced.set(false);
+    closeRestWindows();
+  }
+  phase.set("idle");
+  focusEnd.set(null);
+}
+
+export function tick(): void {
+  ensureToday();
+  const at = Date.now();
+  now.set(at);
+  const p = phase();
+  if (p === "rest") {
+    const end = restEnd();
+    if (end != null && at >= end) finishRest();
+    return;
+  }
+  if (p === "focus" || p === "postpone") {
+    const end = focusEnd();
+    if (end != null && at >= end) startRest(p === "focus");
+  }
+}
+
+export function showApp(): void {
+  if (phase() === "rest") {
+    const screen = displays()[0];
+    if (screen) Window.get(`rest:${screen.id}`)?.focus();
+    return;
+  }
+  const main = Window.get("main");
+  main?.show();
+  main?.focus();
+}

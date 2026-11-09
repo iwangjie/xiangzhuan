@@ -1,0 +1,53 @@
+{
+  "name": "香篆",
+  "id": "com.iwangjie.xiangzhuan",
+  "version": "1.0.0",
+  "build": 1,
+  "icon": "assets/icon.png",
+  "appearance": "light",
+  "theme": "theme.json",
+  "window": {
+    "title": "香篆",
+    "defaultSize": {
+      "width": 440,
+      "height": 680
+    },
+    "minSize": {
+      "width": 400,
+      "height": 580
+    },
+    "defaultPosition": "center",
+    "titleBar": {
+      "style": "hidden",
+      "height": 52
+    }
+  },
+  "macos": {
+    "infoPlist": {
+      "LSUIElement": true,
+      "NSHumanReadableCopyright": "© 2026 wangjie"
+    }
+  },
+  "capabilities": {
+    "process": {
+      "execute": [
+        "/usr/bin/id",
+        "/bin/launchctl"
+      ]
+    },
+    "fs": {
+      "read": [
+        "${homeDir}/Library/LaunchAgents",
+        "/Applications/香篆.app"
+      ],
+      "write": [
+        "${homeDir}/Library/LaunchAgents"
+      ]
+    },
+    "statusBar": true,
+    "windows": true,
+    "webview": {
+      "hosts": []
+    }
+  }
+}
