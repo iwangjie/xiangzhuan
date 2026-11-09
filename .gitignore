@@ -5,3 +5,4 @@ mygo_windows_*.syso
 /dist/
 /.nsh/
 /target/
+test/*-preview.html
