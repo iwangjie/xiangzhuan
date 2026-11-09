@@ -18,9 +18,13 @@ jobs:
           echo "$HOME/.nsh-install/nightly/nsh/bin" >> "$GITHUB_PATH"
       - name: Package
         run: nsh package App.tsx --target macos
-      - name: Zip app
-        run: ditto -c -k --keepParent .nsh/out/香篆.app .nsh/out/香篆-macos.zip
+      - name: Make DMG
+        run: |
+          mkdir -p .nsh/out/dmg
+          cp -R .nsh/out/香篆.app .nsh/out/dmg/
+          ln -s /Applications .nsh/out/dmg/Applications
+          hdiutil create -volname "香篆" -srcfolder .nsh/out/dmg -ov -format UDZO .nsh/out/香篆-macos.dmg
       - name: Publish
         uses: softprops/action-gh-release@v2
         with:
-          files: .nsh/out/香篆-macos.zip
+          files: .nsh/out/香篆-macos.dmg

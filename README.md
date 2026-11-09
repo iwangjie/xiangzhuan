@@ -56,6 +56,16 @@ cp -R .nsh/out/香篆.app /Applications/
 open -a 香篆
 ```
 
+制作可分发的 DMG（内含 App 与 Applications 快捷方式，拖入即装）：
+
+```sh
+rm -rf /tmp/xiangzhuan-dmg
+mkdir -p /tmp/xiangzhuan-dmg
+cp -R .nsh/out/香篆.app /tmp/xiangzhuan-dmg/
+ln -s /Applications /tmp/xiangzhuan-dmg/Applications
+hdiutil create -volname "香篆" -srcfolder /tmp/xiangzhuan-dmg -ov -format UDZO .nsh/out/香篆-macos.dmg
+```
+
 未签名应用首次打开如被 Gatekeeper 拦下，右键点选「打开」，或：
 
 ```sh
