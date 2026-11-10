@@ -307,7 +307,6 @@ export function MainWindow() {
                   value={settings().maxDailySkips}
                   options={SKIP_OPTIONS.map((n) => ({ value: n, label: `${n} 次` }))}
                   onChange={(maxDailySkips) => updateSettings({ maxDailySkips })}
-                  disabled={settings().lockRest}
                 />
               </View>
               <View class="h-px bg-border/60" />
