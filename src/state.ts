@@ -67,18 +67,19 @@ export const loginError = signal<string | null>(null);
 let restReturn: "focus" | "idle" = "focus";
 /** Guards the delayed close of the rest windows against a new rest. */
 let restGeneration = 0;
-/** The timer that ends the rest (the page plays its tea-pour outro first). */
-let restFinishing = false;
-let finishTimer: ReturnType<typeof setTimeout> | null = null;
+/** The page is playing its tea-pour outro; the host stops the rest when it
+ * reports `done` or the fallback timer below fires. */
+export const restFinishing = signal(false);
+let finishTimer: number | null = null;
 
-const OUTRO_MS = 7500;
+const OUTRO_MS = 12000;
 
 function clearFinishTimer(): void {
   if (finishTimer != null) {
     clearTimeout(finishTimer);
     finishTimer = null;
   }
-  restFinishing = false;
+  restFinishing.set(false);
 }
 
 export function today(): string {
@@ -310,10 +311,11 @@ function nextWork(): void {
 }
 
 export function finishRest(): void {
-  if (phase() !== "rest" || restFinishing) return;
+  if (phase() !== "rest" || restFinishing()) return;
   // The shrine page owns the next ~7 s: the incense burns out, the teapot
-  // pours a cup, the room fades to black, then it reports "done".
-  restFinishing = true;
+  // pours a cup, the room fades to black, then it reports "done". The 12 s
+  // timer only ends a rest whose page never reports back.
+  restFinishing.set(true);
   restEnd.set(null);
   paused.set(false);
   pausedAt = null;
@@ -326,7 +328,7 @@ export function finishRest(): void {
 
 /** Ends the rest after the page's outro (called by "done" or the fallback timer). */
 export function finishOutro(): void {
-  if (phase() !== "rest" || !restFinishing) return;
+  if (phase() !== "rest" || !restFinishing()) return;
   clearFinishTimer();
   addRest();
   closeRestWindows();

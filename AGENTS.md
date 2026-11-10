@@ -43,7 +43,7 @@ open -g /Applications/香篆.app
 - 阶段：`idle → focus → rest → focus`，另有 `postpone`。`remainingMs` / `totalMs` 是派生量，不要另存一份时间。
 - **启动即专注**：`Shell.tsx` 在 `settingsLoaded()` 之后跑一次 `startFocus()`，用 `autoStarted` 保证只跑一次。
 - **暂停**只冻结 `focusEnd` 的推进：`paused` + `pausedAt`，恢复时把剩余时间重新挂到 `Date.now()`。暂停中改时长按剩余比例重算。
-- **休息收尾由页面驱动**：`finishRest()` 只置 `restFinishing` 并挂 `OUTRO_MS = 7500` 的兜底定时器；真正推进会话的是页面发回的 `done` → `finishOutro()`。任何 `startRest / postponeRest / skipRest / stopCycle` 都必须先 `clearFinishTimer()`，否则旧定时器会打断新一轮。
+- **休息收尾由页面驱动**：`finishRest()` 置 `restFinishing` 并挂 `OUTRO_MS = 12000` 的兜底定时器；页面收到 `outro: true` 后立刻开始茶汤收尾，发回 `done` → `finishOutro()`。不要只靠 `remainingMs` 归零触发页面收尾。任何 `startRest / postponeRest / skipRest / stopCycle` 都必须先 `clearFinishTimer()`，否则旧定时器会打断新一轮。
 - **休息窗口的关闭有 generation 守卫**（`restGeneration`），`closeRestWindows` 是 420ms 延时 + 代次校验；新增的延时逻辑照抄这个模式。
 - **休息结束不显示主窗口**：`finishOutro / skipRest / postponeRest / stopCycle` 都不调用 `show()`；回到主界面只能由用户点托盘或菜单。休息结束时前台交给 `restActive` 归零后的原生逻辑。
 - **锁定休息**：`restInputLocked() = phase() === "rest" && settings().lockRest`。锁定时 `canSkipNow` / `canPostponeNow` 恒为 false，`skipRest` / `postponeRest` 因此变成 no-op；页面收到 `locked: true` 后隐藏可交互控件。`lockRest` 默认 true，关掉才回到「可跳过 / 延后」的软休息。
@@ -57,7 +57,8 @@ open -g /Applications/香篆.app
 ```json
 { "type": "state", "remainingMs": 0, "totalMs": 90000, "progress": 0.4,
   "canPostpone": true, "canSkip": true, "forced": false, "locked": false,
-  "active": true, "label": "把眼睛从屏幕上移开。", "display": "Built-in Retina Display" }
+  "outro": false, "active": true, "label": "把眼睛从屏幕上移开。",
+  "display": "Built-in Retina Display" }
 ```
 
 页面通过 `window.nsh.postMessage` 回：`ready` / `skip` / `postpone` / `view:<name>` / `done`。

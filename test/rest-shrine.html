@@ -656,6 +656,12 @@
 
     if (!appState.active) restStarted = false;
     if (appState.active && !wasActive) beginSession();
+    // 宿主在休息时间归零的瞬间显式发这一位，页面就不会因为错过 0 ms 的
+    // state 或首帧迟到而根本不播收尾。
+    if (s.outro === true && !outroStarted) {
+      if (!restStarted) beginSession();
+      startOutro();
+    }
     if (appState.active && restStarted && appState.remainingMs <= 0 && !outroStarted) startOutro();
 
     renderHUD();
@@ -670,7 +676,7 @@
       } else if (payload.type === 'view' && payload.view) {
         window.shrineView(payload.view, true);
       } else {
-        if ('remainingMs' in payload || 'progress' in payload || 'forced' in payload || 'locked' in payload || 'display' in payload || 'active' in payload) {
+        if ('remainingMs' in payload || 'progress' in payload || 'forced' in payload || 'locked' in payload || 'outro' in payload || 'display' in payload || 'active' in payload) {
           window.shrineState(payload);
         }
         if (typeof payload.view === 'string') {

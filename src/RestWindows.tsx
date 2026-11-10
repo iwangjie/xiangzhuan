@@ -9,6 +9,7 @@ import {
   phaseLine,
   postponeRest,
   restEnd,
+  restFinishing,
   restForced,
   restInputLocked,
   restMs,
@@ -90,6 +91,7 @@ function RestScreen(props: { display: Display }) {
         canSkip: canSkipNow(),
         forced: restForced() || restInputLocked(),
         locked: restInputLocked(),
+        outro: restFinishing(),
         active: phase() === "rest",
         label: phaseLine(),
         display: props.display.name,
@@ -114,6 +116,7 @@ function RestScreen(props: { display: Display }) {
     canSkipNow();
     restForced();
     restInputLocked();
+    restFinishing();
     phase();
     phaseLine();
     post();
