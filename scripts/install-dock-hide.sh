@@ -1,7 +1,8 @@
 #!/bin/sh
-# Adds the dock-hide dylib to a packaged 香篆.app. nsh's release runner forces
-# a Regular activation policy (Dock icon); the dylib follows the app's
-# `hideDockIcon` preference instead, defaulting to Accessory (menu bar only).
+# Adds the dock-hide/rest-lock dylib to a packaged 香篆.app. nsh's release
+# runner forces a Regular activation policy (Dock icon); the dylib follows the
+# app's `hideDockIcon` preference instead, defaulting to Accessory (menu bar
+# only), and enforces the rest lock while storage says `restLock` is "1".
 set -eu
 
 APP="${1:-.nsh/out/香篆.app}"
@@ -25,4 +26,4 @@ clang -dynamiclib -O2 -fobjc-arc -framework AppKit \
 codesign --force -s - "$RES/dock_hide.dylib"
 codesign --force --deep -s - "$APP"
 
-echo "dock-hide dylib installed in $APP"
+echo "dock-hide + rest-lock dylib installed in $APP"

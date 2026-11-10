@@ -13,6 +13,7 @@ import {
   postponeRest,
   remainingMs,
   restForced,
+  restInputLocked,
   saveSettings,
   settings,
   settingsLoaded,
@@ -39,6 +40,7 @@ const trayLine = computed(() => {
 
 const statusLine = computed(() => {
   if (phase() === "idle") return "待燃";
+  if (phase() === "rest" && restInputLocked()) return "锁定休息中";
   if (phase() === "rest" && restForced()) return "强制休息中";
   return `${phaseLabel()}中 · ${trayTime()}`;
 });
@@ -58,6 +60,7 @@ function trayMenu(): (MenuItem | false)[] {
         onSelect: postponeRest,
       },
       canSkipNow() && { label: "跳过休息", onSelect: skipRest },
+      restInputLocked() && { label: "锁定休息中，无法提前结束", disabled: true },
       restForced() && { label: "强制休息中，无法提前结束", disabled: true },
     );
   } else {

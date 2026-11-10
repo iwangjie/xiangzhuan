@@ -28,6 +28,7 @@ import {
   remainingMs,
   remainingPart,
   restForced,
+  restInputLocked,
   resumeFocus,
   settings,
   setWorkMinutes,
@@ -57,6 +58,12 @@ export function MainWindow() {
     win.set({ closeOnPress: false, title: "香篆" });
     const stop = win.on("closePress", () => win.hide());
     cleanup(stop);
+  });
+
+  // A rest owns the screen. Hide the main window even if it mounted after
+  // `startRest` ran, and never show it again when the rest ends.
+  effect(() => {
+    if (phase() === "rest") win.hide();
   });
 
   let shownPart = 1;
@@ -137,9 +144,11 @@ export function MainWindow() {
                       <Text class="text-[11px] tracking-[0.12em] text-warning">
                         {restForced()
                           ? "强制休息中"
-                          : settings().allowSkip && stats().skips >= settings().maxDailySkips
-                            ? "今日跳过已达上限"
-                            : "静候香尽"}
+                          : restInputLocked()
+                            ? "锁定休息中"
+                            : settings().allowSkip && stats().skips >= settings().maxDailySkips
+                              ? "今日跳过已达上限"
+                              : "静候香尽"}
                       </Text>
                     </If>
                   </View>
@@ -255,13 +264,30 @@ export function MainWindow() {
             <Card style={{ padding: 16, gap: 14 }}>
               <View class="flex-row items-center justify-between gap-4">
                 <View style={{ flex: 1, gap: 2 }}>
+                  <Text class="text-[12px] font-medium text-foreground">休息时锁定输入</Text>
+                  <Text class="text-[10px] leading-4 text-muted-foreground">
+                    全屏休息时拦截键盘鼠标与切屏，只能等香燃尽
+                  </Text>
+                </View>
+                <Switch
+                  checked={settings().lockRest}
+                  onChange={({ checked }) => updateSettings({ lockRest: checked })}
+                  accessibilityLabel="休息时锁定输入"
+                  trackClass="h-6 w-11 rounded-full bg-muted p-0.5 transition-colors checked:bg-primary"
+                  thumbClass="size-5 rounded-full bg-background shadow-sm transition-transform checked:translate-x-5"
+                />
+              </View>
+              <View class="h-px bg-border/60" />
+              <View class="flex-row items-center justify-between gap-4">
+                <View style={{ flex: 1, gap: 2 }}>
                   <Text class="text-[12px] font-medium text-foreground">允许跳过休息</Text>
                   <Text class="text-[10px] leading-4 text-muted-foreground">
-                    关掉后，只能等香燃尽或延后
+                    {settings().lockRest ? "锁定休息时不可用" : "关掉后，只能等香燃尽或延后"}
                   </Text>
                 </View>
                 <Switch
                   checked={settings().allowSkip}
+                  disabled={settings().lockRest}
                   onChange={({ checked }) => updateSettings({ allowSkip: checked })}
                   accessibilityLabel="允许跳过休息"
                   trackClass="h-6 w-11 rounded-full bg-muted p-0.5 transition-colors checked:bg-primary"
@@ -281,6 +307,7 @@ export function MainWindow() {
                   value={settings().maxDailySkips}
                   options={SKIP_OPTIONS.map((n) => ({ value: n, label: `${n} 次` }))}
                   onChange={(maxDailySkips) => updateSettings({ maxDailySkips })}
+                  disabled={settings().lockRest}
                 />
               </View>
               <View class="h-px bg-border/60" />
@@ -329,7 +356,7 @@ export function MainWindow() {
                   </If>
                 </View>
                 <Text class="text-[10px] leading-4 text-muted-foreground">
-                  连续延后 3 次，或跳过 1 次，下一次休息将无法提前结束
+                  锁定休息时每次都强制燃尽；关闭锁定后，连续延后 3 次或跳过 1 次，下一次也无法提前结束
                 </Text>
                 <If when={postpones() > 0}>
                   <Text class="text-[10px] text-muted-foreground">

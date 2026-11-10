@@ -10,19 +10,20 @@ macOS 菜单栏的专注 / 休息提醒。用 nsh（AppKit 原生视图 + TSX）
 - 入口：`App.tsx` → `src/Shell.tsx`（托盘 / 菜单 / 心跳）+ `src/MainWindow.tsx` + `src/RestWindows.tsx`
 - 状态：`src/state.ts`，唯一的事实来源；测试在 `src/state.test.ts`
 
-## 三条硬规则
+## 四条硬规则
 
 1. **`src/shrine-html.ts` 是生成物，永远不手改。** 改 `test/rest-shrine.html`，然后 `python3 scripts/embed-shrine.py`。这个脚本会把 `assets/three/three.min.js` 内联进页面并转义 `</script`。
 2. **`storage.json` 的两个 key 是冻结的**（`src/state.ts` 顶部的 `SETTINGS_KEY` / `STATS_KEY`，故意是不可读字符串）。改 key = 老用户的设置和当日统计清零。
-3. **`hideDockIcon` 有一条跨语言契约**：`saveSettings()` 往 storage 里另写一个裸 key `hideDockIcon`（`"1"` 隐藏 / `"0"` 显示），`native/dock_hide.m` 每 0.8s 轮询它来切 `NSApplication` 的 activation policy。缺省视为隐藏。改任一侧都要同时改另一侧。
+3. **`hideDockIcon` 有一条跨语言契约**：`saveSettings()` 往 storage 里另写一个裸 key `hideDockIcon`（`"1"` 隐藏 / `"0"` 显示），`native/dock_hide.m` 每 0.1s 轮询它来切 `NSApplication` 的 activation policy。缺省视为隐藏。改任一侧都要同时改另一侧。
+4. **休息锁也有一条跨语言契约**：`startRest / closeRestWindows` 通过 `publishRestBridge()` 写裸 key `restActive` / `restLock`（`"1"` / `"0"`）。`restLock` 为 1 时，`native/dock_hide.m` 把休息窗抬到 `NSScreenSaverWindowLevel`、禁用切屏、用本地事件监视器吞掉键盘和鼠标；`restActive` 归 0 时恢复原窗口层级与 activation 选项，并激活休息前最前面的那个 App。`settings.lockRest` 默认 true，存在设置 blob 里，不要和这两个瞬态 key 混用。
 
 ## 常用命令
 
 ```sh
 nsh check                                  # 类型检查（必须干净）
-nsh test                                   # 状态机测试，7 条
+nsh test                                   # 状态机测试，8 条
 nsh package App.tsx --target macos         # 打包到 .nsh/out/香篆.app
-sh scripts/install-dock-hide.sh .nsh/out/香篆.app   # 注入 Dock 隐藏 dylib（每次打包后都要跑）
+sh scripts/install-dock-hide.sh .nsh/out/香篆.app   # 注入 Dock 隐藏 + 休息锁 dylib（每次打包后都要跑）
 python3 scripts/embed-shrine.py            # 场景改动后重新生成 shrine-html.ts
 ```
 
@@ -43,7 +44,9 @@ open -g /Applications/香篆.app
 - **启动即专注**：`Shell.tsx` 在 `settingsLoaded()` 之后跑一次 `startFocus()`，用 `autoStarted` 保证只跑一次。
 - **暂停**只冻结 `focusEnd` 的推进：`paused` + `pausedAt`，恢复时把剩余时间重新挂到 `Date.now()`。暂停中改时长按剩余比例重算。
 - **休息收尾由页面驱动**：`finishRest()` 只置 `restFinishing` 并挂 `OUTRO_MS = 7500` 的兜底定时器；真正推进会话的是页面发回的 `done` → `finishOutro()`。任何 `startRest / postponeRest / skipRest / stopCycle` 都必须先 `clearFinishTimer()`，否则旧定时器会打断新一轮。
-- **休息窗口的关闭有 generation 守卫**（`restGeneration`），`closeRestWindows` / `revealMain` 都是 420ms 延时 + 代次校验；新增的延时逻辑照抄这个模式。
+- **休息窗口的关闭有 generation 守卫**（`restGeneration`），`closeRestWindows` 是 420ms 延时 + 代次校验；新增的延时逻辑照抄这个模式。
+- **休息结束不显示主窗口**：`finishOutro / skipRest / postponeRest / stopCycle` 都不调用 `show()`；回到主界面只能由用户点托盘或菜单。休息结束时前台交给 `restActive` 归零后的原生逻辑。
+- **锁定休息**：`restInputLocked() = phase() === "rest" && settings().lockRest`。锁定时 `canSkipNow` / `canPostponeNow` 恒为 false，`skipRest` / `postponeRest` 因此变成 no-op；页面收到 `locked: true` 后隐藏可交互控件。`lockRest` 默认 true，关掉才回到「可跳过 / 延后」的软休息。
 - 每日跳过上限走 `canSkipNow`（`stats().skips < maxDailySkips`），不要另开一条判断。
 - `canSkipNow` / `canPostponeNow` / `restForced` 是页面按钮的唯一依据，页面不自己算。
 
@@ -53,8 +56,8 @@ open -g /Applications/香篆.app
 
 ```json
 { "type": "state", "remainingMs": 0, "totalMs": 90000, "progress": 0.4,
-  "canPostpone": true, "canSkip": true, "forced": false, "active": true,
-  "label": "把眼睛从屏幕上移开。", "display": "Built-in Retina Display" }
+  "canPostpone": true, "canSkip": true, "forced": false, "locked": false,
+  "active": true, "label": "把眼睛从屏幕上移开。", "display": "Built-in Retina Display" }
 ```
 
 页面通过 `window.nsh.postMessage` 回：`ready` / `skip` / `postpone` / `view:<name>` / `done`。

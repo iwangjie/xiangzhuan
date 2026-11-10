@@ -219,6 +219,9 @@
     backdrop-filter: blur(6px);
     -webkit-backdrop-filter: blur(6px);
   }
+  .view-switcher.hidden {
+    display: none;
+  }
 
   .view-label-prefix {
     color: rgba(232, 225, 213, 0.36);
@@ -343,6 +346,9 @@
     letter-spacing: 0.16em;
     color: rgba(232, 225, 213, 0.36);
     margin-top: 2px;
+  }
+  .drag-hint.hidden {
+    display: none;
   }
 
   .timer-cluster {
@@ -542,6 +548,7 @@
     canPostpone: true,
     canSkip: true,
     forced: false,
+    locked: false,
     label: '一炷香 · 静坐',
     display: '',
     hostControlled: false,
@@ -568,6 +575,7 @@
     btnSkip: document.getElementById('btn-skip'),
     escHint: document.getElementById('esc-hint'),
     dragHint: document.getElementById('drag-hint'),
+    viewSwitcher: document.querySelector('.view-switcher'),
     forcedNote: document.getElementById('forced-note'),
     viewBtns: Array.from(document.querySelectorAll('.view-btn'))
   };
@@ -592,17 +600,22 @@
     dom.displayName.textContent = appState.display ? appState.display : '';
     dom.displayName.style.display = appState.display ? 'block' : 'none';
 
-    const showPostpone = !appState.forced && appState.canPostpone !== false;
-    const showSkip = !appState.forced && appState.canSkip !== false;
+    const locked = !!appState.locked;
+    const showPostpone = !locked && !appState.forced && appState.canPostpone !== false;
+    const showSkip = !locked && !appState.forced && appState.canSkip !== false;
 
     dom.btnPostpone.classList.toggle('hidden', !showPostpone);
     dom.btnSkip.classList.toggle('hidden', !showSkip);
     dom.escHint.classList.toggle('hidden', !showSkip);
-    dom.actionsBar.classList.toggle('hidden', appState.forced || (!showPostpone && !showSkip));
-    dom.forcedNote.classList.toggle('visible', !!appState.forced);
-    dom.dragHint.textContent = showSkip
-      ? '拖动环视 · 1/2/3 切换视角 · ESC 结束'
-      : '拖动环视 · 1/2/3 切换视角';
+    dom.actionsBar.classList.toggle('hidden', locked || appState.forced || (!showPostpone && !showSkip));
+    dom.forcedNote.classList.toggle('visible', !!appState.forced || locked);
+    dom.viewSwitcher.classList.toggle('hidden', locked);
+    dom.dragHint.classList.toggle('hidden', locked);
+    if (!locked) {
+      dom.dragHint.textContent = showSkip
+        ? '拖动环视 · 1/2/3 切换视角 · ESC 结束'
+        : '拖动环视 · 1/2/3 切换视角';
+    }
   }
 
   let restStarted = false;
@@ -637,6 +650,7 @@
     if (typeof s.canPostpone === 'boolean') appState.canPostpone = s.canPostpone;
     if (typeof s.canSkip === 'boolean') appState.canSkip = s.canSkip;
     if (typeof s.forced === 'boolean') appState.forced = s.forced;
+    if (typeof s.locked === 'boolean') appState.locked = s.locked;
     if (typeof s.label === 'string' && s.label.trim()) appState.label = s.label.trim();
     if (typeof s.display === 'string') appState.display = s.display.trim();
 
@@ -656,7 +670,7 @@
       } else if (payload.type === 'view' && payload.view) {
         window.shrineView(payload.view, true);
       } else {
-        if ('remainingMs' in payload || 'progress' in payload || 'forced' in payload || 'display' in payload || 'active' in payload) {
+        if ('remainingMs' in payload || 'progress' in payload || 'forced' in payload || 'locked' in payload || 'display' in payload || 'active' in payload) {
           window.shrineState(payload);
         }
         if (typeof payload.view === 'string') {
@@ -3483,7 +3497,10 @@
   }
 
   dom.viewBtns.forEach(btn => {
-    btn.addEventListener('click', () => window.shrineView(btn.dataset.view, false));
+    btn.addEventListener('click', () => {
+      if (appState.locked) return;
+      window.shrineView(btn.dataset.view, false);
+    });
   });
 
   // 拖动环视
@@ -3493,6 +3510,7 @@
   const canvasEl = renderer.domElement;
   canvasEl.style.touchAction = 'none';
   canvasEl.addEventListener('pointerdown', e => {
+    if (appState.locked) return;
     cancelIntro();
     dragging = true;
     lastPointerX = e.clientX;
@@ -3518,6 +3536,7 @@
   }, true);
 
   window.addEventListener('keydown', e => {
+    if (appState.locked) return;
     const key = String(e.key).toLowerCase();
     if ((e.metaKey || e.ctrlKey) && key === 'r') {
       e.preventDefault();
@@ -3547,9 +3566,11 @@
   });
 
   dom.btnSkip.addEventListener('click', () => {
+    if (appState.locked) return;
     if (!appState.forced && appState.canSkip) emitHost('skip');
   });
   dom.btnPostpone.addEventListener('click', () => {
+    if (appState.locked) return;
     if (!appState.forced && appState.canPostpone) emitHost('postpone');
   });
 

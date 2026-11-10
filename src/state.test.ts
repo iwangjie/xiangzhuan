@@ -14,6 +14,7 @@ import {
   remainingMs,
   restEnd,
   restForced,
+  restInputLocked,
   restOpen,
   resumeFocus,
   setWorkMinutes,
@@ -33,7 +34,7 @@ function reset(): void {
   restForced.set(false);
   forceNext.set(false);
   postpones.set(0);
-  settings.set({ ...DEFAULT_SETTINGS });
+  settings.set({ ...DEFAULT_SETTINGS, lockRest: false });
 }
 
 function restFromFocus(): void {
@@ -48,6 +49,20 @@ test("a focus ends into a full rest", () => {
   restFromFocus();
   expect(restOpen()).toBe(true);
   expect(restForced()).toBe(false);
+});
+
+test("the default rest locks out skipping and postponing", () => {
+  reset();
+  settings.update((s) => ({ ...s, lockRest: true }));
+  restFromFocus();
+  expect(restInputLocked()).toBe(true);
+  expect(canSkipNow()).toBe(false);
+  expect(canPostponeNow()).toBe(false);
+  skipRest();
+  expect(phase()).toBe("rest");
+  postponeRest();
+  expect(phase()).toBe("rest");
+  expect(restOpen()).toBe(true);
 });
 
 test("three postponements make the next rest forced", () => {

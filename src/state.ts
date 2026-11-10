@@ -12,6 +12,8 @@ export interface Settings {
   startAtLogin: boolean;
   /** Keep the app out of the Dock (menu bar only). */
   hideDockIcon: boolean;
+  /** Keep the rest screen frontmost and swallow keyboard and mouse input. */
+  lockRest: boolean;
 }
 
 export interface Stats {
@@ -29,10 +31,21 @@ export const DEFAULT_SETTINGS: Settings = {
   maxDailySkips: 10,
   startAtLogin: false,
   hideDockIcon: true,
+  lockRest: true,
 };
 
 const SETTINGS_KEY = "xiangzhuan.settings.v1";
 const STATS_KEY = "xiangzhuan.stats.v1";
+const REST_ACTIVE_KEY = "restActive";
+const REST_LOCK_KEY = "restLock";
+
+/** The native dylib polls these two keys. `restActive` marks a rest screen;
+ * when `restLock` is "1" it keeps that screen frontmost and swallows input.
+ * Cleared on launch so a crash cannot leave the desktop locked. */
+function publishRestBridge(active: boolean): void {
+  void Storage.setItem(REST_ACTIVE_KEY, active ? "1" : "0").catch(() => {});
+  void Storage.setItem(REST_LOCK_KEY, active && settings().lockRest ? "1" : "0").catch(() => {});
+}
 
 export const settings = signal<Settings>({ ...DEFAULT_SETTINGS });
 export const settingsLoaded = signal(false);
@@ -43,7 +56,6 @@ export const now = signal(Date.now());
 export const focusEnd = signal<number | null>(null);
 export const restEnd = signal<number | null>(null);
 export const restOpen = signal(false);
-export const restClosing = signal(false);
 export const paused = signal(false);
 let pausedAt: number | null = null;
 export const restForced = signal(false);
@@ -53,8 +65,6 @@ export const loginError = signal<string | null>(null);
 
 /** What the next rest returns to, once it is over. */
 let restReturn: "focus" | "idle" = "focus";
-/** Whether the main window was on screen when the rest took it away. */
-let mainWasVisible = false;
 /** Guards the delayed close of the rest windows against a new rest. */
 let restGeneration = 0;
 /** The timer that ends the rest (the page plays its tea-pour outro first). */
@@ -109,6 +119,10 @@ export const remainingPart = computed(() => {
   return total <= 0 ? 0 : Math.min(1, Math.max(0, remainingMs() / total));
 });
 
+/** The native rest lock is engaged for this rest. `restForced` is the
+ * per-cycle rule; this is the user's blanket lock. */
+export const restInputLocked = computed(() => phase() === "rest" && settings().lockRest);
+
 export const phaseLabel = computed(() => {
   switch (phase()) {
     case "focus":
@@ -127,7 +141,7 @@ export const phaseLine = computed(() => {
     case "focus":
       return paused() ? "已暂停，点继续。" : "香正在燃，别急。";
     case "rest":
-      return restForced() ? "这炷香，要燃尽。" : "把眼睛从屏幕上移开。";
+      return restForced() || restInputLocked() ? "这炷香，要燃尽。" : "把眼睛从屏幕上移开。";
     case "postpone":
       return "再处理一小会儿。";
     default:
@@ -138,11 +152,14 @@ export const phaseLine = computed(() => {
 export const canSkipNow = computed(
   () =>
     phase() === "rest" &&
+    !restInputLocked() &&
     settings().allowSkip &&
     !restForced() &&
     stats().skips < Math.max(0, settings().maxDailySkips),
 );
-export const canPostponeNow = computed(() => phase() === "rest" && !restForced());
+export const canPostponeNow = computed(
+  () => phase() === "rest" && !restInputLocked() && !restForced(),
+);
 
 export function formatClock(ms: number): string {
   const total = Math.max(0, Math.ceil(ms / 1000));
@@ -174,6 +191,7 @@ function addSkip(): void {
 }
 
 export function loadSettings(): void {
+  publishRestBridge(false);
   void Storage.getItem(SETTINGS_KEY)
     .then((raw) => {
       if (!raw) return;
@@ -208,6 +226,7 @@ export function saveStats(): void {
 
 export function updateSettings(patch: Partial<Settings>): void {
   settings.update((s) => ({ ...s, ...patch }));
+  if (phase() === "rest") publishRestBridge(true);
 }
 
 export function startFocus(): void {
@@ -263,33 +282,20 @@ export function startRest(completedWork = false): void {
   restForced.set(forceNext());
   clearFinishTimer();
   restGeneration++;
-  restClosing.set(false);
   restOpen.set(true);
+  publishRestBridge(true);
   restEnd.set(Date.now() + restMs());
   phase.set("rest");
-  const main = Window.get("main");
-  mainWasVisible = main?.state()?.visible ?? false;
-  if (mainWasVisible) main?.hide();
+  Window.get("main")?.hide();
   saveStats();
 }
 
 function closeRestWindows(): void {
   const generation = ++restGeneration;
-  restClosing.set(true);
   setTimeout(() => {
     if (generation !== restGeneration) return;
     restOpen.set(false);
-    restClosing.set(false);
-  }, 420);
-}
-
-function revealMain(): void {
-  if (!mainWasVisible) return;
-  mainWasVisible = false;
-  const generation = restGeneration;
-  setTimeout(() => {
-    if (generation !== restGeneration) return;
-    Window.get("main")?.show();
+    publishRestBridge(false);
   }, 420);
 }
 
@@ -325,7 +331,6 @@ export function finishOutro(): void {
   addRest();
   closeRestWindows();
   nextWork();
-  revealMain();
   saveStats();
 }
 
@@ -342,7 +347,6 @@ export function postponeRest(): void {
   closeRestWindows();
   phase.set("postpone");
   focusEnd.set(Date.now() + postponeMs());
-  revealMain();
 }
 
 export function skipRest(): void {
@@ -356,7 +360,6 @@ export function skipRest(): void {
   addSkip();
   closeRestWindows();
   nextWork();
-  revealMain();
   saveStats();
 }
 
