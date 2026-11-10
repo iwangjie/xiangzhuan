@@ -1,8 +1,7 @@
 #!/bin/sh
 # Adds the dock-hide/rest-lock dylib to a packaged 香篆.app. The dylib follows
-# nsh.json's activation policy when `hideDockIcon` is off and returns the app to
-# the menu bar when it is on, and enforces the rest lock while storage says
-# `restLock` is "1".
+# `hideDockIcon`: Accessory (menu bar only) when on, Regular (Dock icon) when
+# off, and enforces the rest lock while storage says `restLock` is "1".
 set -eu
 
 APP="${1:-.nsh/out/香篆.app}"
