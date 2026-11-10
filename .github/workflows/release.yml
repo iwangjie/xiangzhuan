@@ -22,11 +22,20 @@ jobs:
         run: sh scripts/install-dock-hide.sh .nsh/out/香篆.app
       - name: Make DMG
         run: |
+          # An ASCII asset name: GitHub drops non-ASCII characters, which
+          # turned "香篆-macos.dmg" into "-macos.dmg" on the release page.
+          version="${GITHUB_REF_NAME#v}"
+          dmg=".nsh/out/xiangzhuan-${version}-macos-arm64.dmg"
           mkdir -p .nsh/out/dmg
           cp -R .nsh/out/香篆.app .nsh/out/dmg/
           ln -s /Applications .nsh/out/dmg/Applications
-          hdiutil create -volname "香篆" -srcfolder .nsh/out/dmg -ov -format UDZO .nsh/out/香篆-macos.dmg
+          hdiutil create -volname "香篆" -srcfolder .nsh/out/dmg -ov -format UDZO "$dmg"
+          echo "DMG=$dmg" >> "$GITHUB_ENV"
       - name: Publish
-        uses: softprops/action-gh-release@v2
-        with:
-          files: .nsh/out/香篆-macos.dmg
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          # Replace the release so a re-tagged build never leaves the previous
+          # asset alongside the new one.
+          gh release delete "$GITHUB_REF_NAME" --yes --cleanup-tag=false || true
+          gh release create "$GITHUB_REF_NAME" "$DMG" --title "$GITHUB_REF_NAME" --generate-notes
