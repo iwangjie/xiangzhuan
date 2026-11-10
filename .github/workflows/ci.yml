@@ -13,8 +13,8 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install nsh
         run: |
-          curl -fsSL https://nsh.dev/install.sh | sh
-          echo "$HOME/.nsh-install/nightly/nsh/bin" >> "$GITHUB_PATH"
+          curl -fsSL https://nsh.dev/install.sh | sh -s -- --nightly
+          echo "$HOME/.nsh/bin" >> "$GITHUB_PATH"
       - name: Check
         run: nsh check
       - name: Test
