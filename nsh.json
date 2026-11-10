@@ -23,8 +23,8 @@
     }
   },
   "macos": {
+    "activationPolicy": "accessory",
     "infoPlist": {
-      "LSUIElement": true,
       "NSHumanReadableCopyright": "© 2026 wangjie"
     }
   },

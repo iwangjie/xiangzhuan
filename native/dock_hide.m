@@ -1,8 +1,8 @@
 // Keeps 香篆 in the menu bar only, or in the Dock, following the app's
-// `hideDockIcon` storage key. nsh's release runner always calls
-// `-[NSApplication setActivationPolicy:Regular]`; this swizzle replaces that
-// policy with Accessory while hiding is on, and toggles live by polling the
-// app's storage.json (default: hidden, also absent the key).
+// `hideDockIcon` storage key. nsh's runner calls
+// `-[NSApplication setActivationPolicy:]` with nsh.json's policy; this swizzle
+// replaces that policy with Accessory while hiding is on, and toggles live by
+// polling the app's storage.json (default: hidden, also absent the key).
 //
 // It also owns the rest lock. The host writes `restActive` and `restLock`
 // into the same storage file. While `restLock` is "1" the dylib raises the
