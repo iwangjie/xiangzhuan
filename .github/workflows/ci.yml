@@ -18,7 +18,15 @@ jobs:
       - name: Check
         run: nsh check
       - name: Test
-        run: nsh test
+        run: |
+          set -o pipefail
+          nsh test 2>&1 | tee /tmp/nsh-test.log
+      - name: Report test failure
+        if: failure()
+        run: |
+          while IFS= read -r line; do
+            echo "::error title=nsh test::$line"
+          done < /tmp/nsh-test.log
       - name: Package
         run: nsh package App.tsx --target macos
       - name: Install native helpers
