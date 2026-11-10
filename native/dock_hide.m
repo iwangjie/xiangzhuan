@@ -61,6 +61,7 @@ static BOOL restActive = NO;
 static BOOL restWantsLock = NO;
 static NSUInteger savedPresentationOptions = 0;
 static NSTimeInterval lockStartedAt = 0;
+static NSTimeInterval lastRaiseAt = 0;
 static NSMapTable<NSWindow *, NSNumber *> *savedLevels;
 static NSMapTable<NSWindow *, NSNumber *> *savedBehaviors;
 static id keyMonitor;
@@ -104,20 +105,26 @@ static BOOL hasVisibleRestWindow(void) {
 
 static void raiseRestWindows(void) {
   NSApplication *app = NSApplication.sharedApplication;
+  NSTimeInterval now = uptime();
+  BOOL force = !app.isActive || now - lastRaiseAt >= 1.0;
   for (NSWindow *win in app.windows) {
     if (!isRestWindow(win)) continue;
     if ([savedLevels objectForKey:win] == nil) {
       [savedLevels setObject:@(win.level) forKey:win];
       [savedBehaviors setObject:@(win.collectionBehavior) forKey:win];
+      force = YES;
     }
     win.level = NSScreenSaverWindowLevel;
     win.collectionBehavior |= NSWindowCollectionBehaviorCanJoinAllSpaces |
                               NSWindowCollectionBehaviorStationary |
                               NSWindowCollectionBehaviorFullScreenAuxiliary |
                               NSWindowCollectionBehaviorIgnoresCycle;
-    [win orderFrontRegardless];
+    if (force) [win orderFrontRegardless];
   }
-  if (!app.isActive) [app activateIgnoringOtherApps:YES];
+  if (force) {
+    lastRaiseAt = now;
+    if (!app.isActive) [app activateIgnoringOtherApps:YES];
+  }
 }
 
 static void applyRestLock(BOOL on) {
@@ -127,6 +134,7 @@ static void applyRestLock(BOOL on) {
     if (!hasVisibleRestWindow()) return;
     lockApplied = YES;
     lockStartedAt = uptime();
+    lastRaiseAt = 0;
     savedPresentationOptions = app.presentationOptions;
     NSApplicationPresentationOptions options = savedPresentationOptions;
     options &= ~(NSApplicationPresentationAutoHideDock |
@@ -256,7 +264,8 @@ static void refreshRest(NSDictionary *storage) {
   restWantsLock = wantsLock;
 
   // A stuck rest must never trap the desktop: the longest configured rest is
-  // 120 s plus the page's 7.5 s outro, so five minutes is a safe ceiling.
+  // 120 s plus the page's ~7 s outro (12 s fallback), so five minutes is a
+  // safe ceiling.
   if (lockApplied && now - lockStartedAt > 300.0) {
     applyRestLock(NO);
     lockSuppressed = YES;
