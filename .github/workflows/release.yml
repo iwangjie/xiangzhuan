@@ -18,6 +18,8 @@ jobs:
           echo "$HOME/.nsh-install/nightly/nsh/bin" >> "$GITHUB_PATH"
       - name: Package
         run: nsh package App.tsx --target macos
+      - name: Install native helpers
+        run: sh scripts/install-dock-hide.sh .nsh/out/香篆.app
       - name: Make DMG
         run: |
           mkdir -p .nsh/out/dmg

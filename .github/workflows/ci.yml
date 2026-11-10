@@ -21,3 +21,5 @@ jobs:
         run: nsh test
       - name: Package
         run: nsh package App.tsx --target macos
+      - name: Install native helpers
+        run: sh scripts/install-dock-hide.sh .nsh/out/香篆.app
