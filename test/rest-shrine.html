@@ -5,6 +5,11 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 <title>香篆 · 茶席静坐</title>
 <style>
+  @font-face {
+    font-family: "Shrine Calligraphy";
+    src: url("../assets/fonts/shrine-calligraphy.woff") format("woff");
+  }
+
   :root {
     --c-paper: #e8e1d5;
     --c-muted: rgba(232, 225, 213, 0.58);
@@ -704,7 +709,8 @@
     dom.filmGrain.style.backgroundImage = 'url(' + c.toDataURL() + ')';
   })();
 
-  // 墙上挂轴格言库：每次休息随机抽一条格言、落款、朱印与轻微挂位变化
+  const SCROLL_TITLE_FONT = '174px "Shrine Calligraphy"';
+  // 每次休息随机选一幅挂轴。新增题字时同步更新 shrine-calligraphy.woff 的字形子集。
   const SCROLL_LINES = [
     ['心安即归处', '焚香默坐', '清心'],
     ['得失随缘', '清心居静坐题', '自在'],
@@ -1549,14 +1555,14 @@
     });
 
     ctx.fillStyle = '#1d1b18';
-    ctx.font = '500 106px "Kaiti SC", "STKaiti", "Songti SC", "STSong", "Noto Serif CJK SC", serif';
+    ctx.font = `${SCROLL_TITLE_FONT}, "Kaiti SC", "STKaiti", "Songti SC", serif`;
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
 
     const chars = scrollChars;
-    const charX = padX + innerW * 0.68;
+    const charX = padX + innerW * 0.64;
     const charStartY = padTop + 210;
-    const charGap = chars.length > 6 ? 132 : 152;
+    const charGap = 183;
 
     chars.forEach((ch, idx) => {
       ctx.save();
@@ -1595,6 +1601,13 @@
     ctx.restore();
   }
 
+  function repaintHangingScroll() {
+    const texture = textures.hangingScroll;
+    const canvas = texture.image;
+    paintHangingScroll(canvas.getContext('2d'), canvas.width, canvas.height);
+    texture.needsUpdate = true;
+  }
+
   function rollScroll() {
     const pick = SCROLL_LINES[(Math.random() * SCROLL_LINES.length) | 0];
     scrollChars = Array.from(pick[0]);
@@ -1604,12 +1617,7 @@
     scrollHangY = 1.38 + Math.random() * 0.14;
     scrollHangTilt = (Math.random() - 0.5) * 0.018;
 
-    const tex = textures.hangingScroll;
-    if (tex && tex.image && tex.image.getContext) {
-      const img = tex.image;
-      paintHangingScroll(img.getContext('2d'), img.width, img.height);
-      tex.needsUpdate = true;
-    }
+    repaintHangingScroll();
     if (typeof scrollGroup !== 'undefined' && scrollGroup) {
       scrollGroup.position.set(scrollHangX, scrollHangY, -2.20);
       scrollGroup.rotation.z = scrollHangTilt;
@@ -1621,6 +1629,10 @@
   }
 
   buildProceduralTextures();
+  // Canvas 上的文字不会随字体加载自动更新，需要重画挂轴纹理。
+  document.fonts.load(SCROLL_TITLE_FONT, scrollChars.join(''))
+    .then(repaintHangingScroll)
+    .catch(error => console.warn('无法加载挂轴行书字体', error));
 
   function addContactShadow(parent, x, y, z, scaleX, scaleZ, opacity) {
     const m = new THREE.Mesh(
