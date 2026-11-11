@@ -557,6 +557,7 @@
     label: '一炷香 · 静坐',
     display: '',
     hostControlled: false,
+    visitSeed: null,
     active: false
   };
 
@@ -659,8 +660,14 @@
     if (typeof s.label === 'string' && s.label.trim()) appState.label = s.label.trim();
     if (typeof s.display === 'string') appState.display = s.display.trim();
 
-    if (!appState.active) restStarted = false;
-    if (appState.active && !wasActive) beginSession();
+    if (!appState.active) {
+      restStarted = false;
+      if (wasActive) fishVisitor?.stop();
+    }
+    if (appState.active && !wasActive) {
+      appState.visitSeed = Number.isFinite(s.visitSeed) ? s.visitSeed : null;
+      beginSession();
+    }
     // 宿主在休息时间归零的瞬间显式发这一位，页面就不会因为错过 0 ms 的
     // state 或首帧迟到而根本不播收尾。
     if (s.outro === true && !outroStarted) {
@@ -3379,6 +3386,7 @@
 
     introPhase = 1;
     introTimer = 0;
+    fishVisitor?.begin(appState.totalMs, appState.visitSeed);
 
     requestAnimationFrame(() => {
       if (!appState.active) return;
@@ -3390,6 +3398,7 @@
   function startOutro() {
     if (outroStarted) return;
     outroStarted = true;
+    fishVisitor?.stop(false);
     outroElapsed = 0;
     cancelIntro();
     dom.hud.classList.add('outro');
@@ -3695,7 +3704,8 @@
   }
 
   function animate() {
-    const dt = Math.min(0.05, clock.getDelta());
+    const frameTime = clock.getDelta();
+    const dt = Math.min(0.05, frameTime);
     elapsed += dt;
 
     // 独立浏览器预览模式（当宿主尚未接管时，自动按真实时间缓慢推进演示）
@@ -3754,6 +3764,7 @@
     emberMicroGlow.material.opacity = (0.24 + 0.16 * pulse) * emberFadeOut;
     windowFill.intensity = 3.15 + 0.10 * Math.sin(elapsed * 0.5);
 
+    fishVisitor?.update(Math.min(0.09, frameTime), appState.remainingMs);
     updateCamera(dt);
     resizeRenderer();
     renderer.render(scene, camera);
@@ -3764,6 +3775,407 @@
     }
     requestAnimationFrame(animate);
   }
+
+  // 大肥鱼只在每轮休息中抽签一次，沿连续路线来访。
+  function createFishVisitor(art) {
+    const fishTextures = {};
+    const fishFrames = art.frames;
+    const fishMaterial = new THREE.MeshBasicMaterial({
+      transparent: true, alphaTest: 0.065, toneMapped: false, depthWrite: true,
+    });
+    const fish = new THREE.Group();
+    const fishCard = new THREE.Mesh(new THREE.PlaneGeometry(1, 1), fishMaterial);
+    fish.add(fishCard);
+    scene.add(fish);
+
+    const fishShadow = addContactShadow(scene, 0, floorY + 0.0025, 0, 0.32, 0.23, 0.55);
+    fish.visible = fishShadow.visible = false;
+
+    function fishViewFov() {
+      const aspect = window.innerWidth / window.innerHeight;
+      return Math.min(76, THREE.MathUtils.radToDeg(
+        2 * Math.atan(Math.tan(Math.PI / 8) * (16 / 9) / aspect)));
+    }
+    const fishView = { pos: new THREE.Vector3(0.52, 1.62, 3.74),
+      target: new THREE.Vector3(0.32, 0.43, -0.64), fov: fishViewFov() };
+    VIEWS.fishVisit = fishView;
+    const entryCamera = new THREE.PerspectiveCamera();
+    const teaProps = new THREE.Group();
+    const wallProps = new THREE.Group();
+    scene.add(teaProps, wallProps);
+    teaProps.visible = wallProps.visible = false;
+
+    const fishHeight = 0.70;
+    const fishFloor = floorY + 0.003;
+    const teaPosition = new THREE.Vector3(1.41, fishFloor, 0.58);
+    const teaStandTop = fishFloor + 0.204;
+    const teaCupRest = new THREE.Vector3(teaPosition.x - 0.115, teaStandTop, teaPosition.z + 0.014);
+    const teaStandWood = new THREE.MeshStandardMaterial({
+      color: 0x65452d, map: textures.walnutColor, roughness: 0.80,
+    });
+
+    function addFishStool(parent, width, depth) {
+      const group = new THREE.Group();
+      const slab = new THREE.Mesh(new THREE.BoxGeometry(width, 0.044, depth), teaStandWood);
+      slab.position.y = -0.022;
+      slab.castShadow = slab.receiveShadow = true;
+      group.add(slab);
+      const legGeometry = new THREE.BoxGeometry(0.043, 1, 0.043);
+      const legs = [];
+      for (const sx of [-1, 1]) {
+        for (const sz of [-1, 1]) {
+          const leg = new THREE.Mesh(legGeometry, teaStandWood);
+          leg.position.set(sx * (width / 2 - 0.05), 0, sz * (depth / 2 - 0.045));
+          leg.castShadow = true;
+          group.add(leg);
+          legs.push(leg);
+        }
+      }
+      parent.add(group);
+      return {group, legs};
+    }
+
+    function placeFishStool(stool, x, z, top) {
+      stool.group.position.set(x, top, z);
+      const legHeight = top - floorY - 0.044;
+      for (const leg of stool.legs) {
+        leg.scale.y = legHeight;
+        leg.position.y = -0.044 - legHeight / 2;
+      }
+    }
+    placeFishStool(addFishStool(teaProps, 0.36, 0.28), 1.16, 0.56, teaStandTop);
+    addContactShadow(teaProps, 1.16, floorY + 0.002, 0.56, 0.40, 0.33, 0.55);
+
+    const fishCup = new THREE.Group();
+    const fishCupProfile = [[0, 0], [0.014, 0], [0.017, 0.006], [0.029, 0.035],
+      [0.029, 0.038], [0.026, 0.037], [0.021, 0.015], [0.013, 0.007], [0, 0.007]]
+      .map(([r, y]) => new THREE.Vector2(r, y));
+    const fishCupBody = new THREE.Mesh(new THREE.LatheGeometry(fishCupProfile, 28),
+      new THREE.MeshStandardMaterial({color: 0xe6d4b1, roughness: 0.35, side: THREE.DoubleSide}));
+    fishCupBody.castShadow = true;
+    fishCup.add(fishCupBody);
+    const fishTea = new THREE.Mesh(new THREE.CircleGeometry(0.023, 24),
+      new THREE.MeshStandardMaterial({color: 0x823e1d, roughness: 0.28}));
+    fishTea.rotation.x = -Math.PI / 2;
+    fishTea.position.y = 0.024;
+    fishCup.add(fishTea);
+    fishCup.position.copy(teaCupRest);
+    fishCup.scale.setScalar(1.35);
+    teaProps.add(fishCup);
+
+    const reachFrame = fishFrames.touch;
+    const reachX = (0.976 - reachFrame.anchor) * reachFrame.ratio * fishHeight;
+    const reachY = (1 - 0.236 - reachFrame.sole) * fishHeight;
+    const wallFeet = new THREE.Vector3();
+    const wallStep = new THREE.Vector3();
+    const wallApproach = new THREE.Vector3();
+    const highStep = addFishStool(wallProps, 0.44, 0.48);
+    const lowStep = addFishStool(wallProps, 0.38, 0.35);
+
+    function placeScrollSteps() {
+      const tip = scrollGroup.localToWorld(
+        new THREE.Vector3(scrollW / 2 - 0.015, -scrollH / 2 - 0.006, 0.060));
+      wallFeet.set(tip.x + reachX, tip.y - reachY, tip.z + 0.015);
+      wallStep.set(wallFeet.x, (wallFeet.y + fishFloor) * 0.5, -1.48);
+      wallApproach.set(wallFeet.x, fishFloor, -1.14);
+      placeFishStool(highStep, wallFeet.x, -1.91, wallFeet.y - 0.003);
+      placeFishStool(lowStep, wallStep.x, -1.45, wallStep.y - 0.003);
+    }
+    // 求脚下仍在榻榻米上的画面右缘。进出和探头都经过这里。
+    function edgePoint(ndcX, y, z) {
+      const a = new THREE.Vector3(0, y, z).project(entryCamera);
+      const b = new THREE.Vector3(1, y, z).project(entryCamera);
+      let low = 1.8;
+      let high = 3.43;
+      if (ndcX < a.x || ndcX < b.x) return new THREE.Vector3(low, fishFloor, z);
+      for (let n = 0; n < 18; n++) {
+        const x = (low + high) * 0.5;
+        if (new THREE.Vector3(x, y, z).project(entryCamera).x < ndcX) low = x;
+        else high = x;
+      }
+      return new THREE.Vector3((low + high) * 0.5, fishFloor, z);
+    }
+
+    const walkFrames = ['w0','w16','w5','w6','w22','w10','w26','w13','w14','w30'];
+    const runFrames = ['runContactA', 'runFlightA', 'runContactB', 'runFlightB'];
+    const jumpFrames = ['j0','j1','j3','j7','j11','j15','j19','j23','j27','j31'];
+    const teaFrames = [
+      [0, 'idle', false], [0.48, 'teaReach', false], [1.05, 'teaGrip', true],
+      [1.33, 'teaRaise', true], [1.73, 'teaSip', true], [3.00, 'teaRaise', true],
+      [3.39, 'teaGrip', true], [3.83, 'teaReach', false], [4.25, 'idle', false],
+    ];
+    const positionNext = new THREE.Vector3();
+    const travel = new THREE.Vector3();
+    let distanceInWalk = 0;
+    let runPhase = 0;
+    let direction = -1;
+    let index = 0;
+    let age = 0;
+    let fishReady = false;
+    let restDuration = 0;
+    let visit = null;
+    let returnView = null;
+    let cameraLead = 0;
+
+    function poseFish(name, facing, scale = 1, tilt = 0) {
+      const frame = fishFrames[name];
+      const texture = fishTextures[name];
+      if (fishMaterial.map !== texture) {
+        const needsDefine = !fishMaterial.map;
+        fishMaterial.map = texture;
+        if (needsDefine) fishMaterial.needsUpdate = true;
+      }
+      texture.repeat.x = facing;
+      texture.offset.x = facing < 0 ? 1 : 0;
+      const h = fishHeight * frame.size * scale;
+      const w = h * frame.ratio;
+      const anchor = facing > 0 ? frame.anchor : 1 - frame.anchor;
+      fishCard.scale.set(w, h, 1);
+      fishCard.position.set((0.5 - anchor) * w, (0.5 - frame.sole) * h, 0);
+      fish.rotation.z = tilt;
+    }
+
+    function fishMove(seconds, points, mode, facing) {
+      const path = new THREE.CatmullRomCurve3(points);
+      path.arcLengthDivisions = 250;
+      path.updateArcLengths();
+      return {seconds, path, mode, facing};
+    }
+
+    function fishHop(start, end, facing) {
+      return {seconds: 0.80, start, end, mode: 'hop', facing};
+    }
+
+    function planVisit(random) {
+      if (random() < 0.28) return null;
+      entryCamera.fov = fishViewFov();
+      entryCamera.aspect = window.innerWidth / window.innerHeight;
+      entryCamera.position.copy(fishView.pos);
+      entryCamera.lookAt(fishView.target);
+      entryCamera.updateMatrixWorld();
+      entryCamera.updateProjectionMatrix();
+      const z = 0.68;
+      const home = edgePoint(1.33, floorY + 0.49, z);
+      const lean = edgePoint(0.97, floorY + 0.49, z);
+      const frontCorner = new THREE.Vector3(1.81, fishFloor, 0.76);
+      const sideFront = new THREE.Vector3(1.47, fishFloor, 0.35);
+      const sideBack = new THREE.Vector3(1.43, fishFloor, -0.72);
+      const back = new THREE.Vector3(1.10, fishFloor, -1.02);
+      const stage = [frontCorner, sideFront, sideBack, back, wallApproach];
+      const farCorner = new THREE.Vector3(2.29, fishFloor, -0.39);
+      const options = [
+        () => [
+          fishMove(1.45, [frontCorner, teaPosition], 'walk', -1),
+          {seconds: 4.75, point: teaPosition, mode: 'tea', facing: -1},
+          fishMove(1.05, [teaPosition, frontCorner], 'walk', 1),
+        ],
+        () => [
+          fishMove(2.78, stage, 'run', -1),
+          {seconds: 0.72, point: wallApproach, mode: 'look', facing: -1},
+          fishHop(wallApproach, wallStep, -1),
+          fishHop(wallStep, wallFeet, -1),
+          {seconds: 2.05, point: wallFeet, mode: 'touch', facing: -1},
+          fishHop(wallFeet, wallStep, 1),
+          fishHop(wallStep, wallApproach, 1),
+          fishMove(2.38, [...stage].reverse(), 'run', 1),
+        ],
+        () => [
+          fishMove(1.48, [frontCorner, new THREE.Vector3(2.12, fishFloor, 0.24), farCorner], 'run', 1),
+          {seconds: 0.8 + random() * 1.0, point: farCorner, mode: 'look', facing: -1},
+          fishMove(2.15, [farCorner, frontCorner], 'walk', -1),
+        ],
+      ];
+      const peeksFirst = random() < 0.48;
+      const count = 1 + Math.floor(random() * options.length);
+      const parts = peeksFirst ? [
+        fishMove(1.25, [home, lean], 'walk', -1),
+        {seconds: 0.75 + random() * 0.65, point: lean, mode: 'peek', facing: -1},
+        fishMove(1.38, [lean, frontCorner], 'walk', -1),
+      ] : [
+        fishMove(1.78, [home, frontCorner], 'run', -1),
+      ];
+      for (let n = 0; n < count; n++) {
+        const [action] = options.splice(Math.floor(random() * options.length), 1);
+        parts.push(...action());
+        if (n + 1 < count) {
+          parts.push({seconds: 0.45 + random() * 0.7,
+            point: frontCorner, mode: 'idle', facing: -1});
+        }
+      }
+      parts.push(fishMove(1.95, [frontCorner, home], 'run', 1));
+      const duration = parts.reduce((total, part) => total + part.seconds, 0);
+      const latest = restDuration - duration - 9.1;
+      if (latest < 0.8) return null;
+      const early = random() < 0.25;
+      const arrival = early
+        ? 0.8 + random() * Math.min(4.2, latest - 0.8)
+        : THREE.MathUtils.lerp(Math.min(16, latest), latest, random());
+      return {parts, home, duration, arrival};
+    }
+
+    function stop(clearProps = true) {
+      visit = null;
+      returnView = null;
+      fish.visible = fishShadow.visible = false;
+      fishCup.visible = true;
+      if (clearProps) teaProps.visible = wallProps.visible = false;
+      scrollGroup.rotation.z = scrollHangTilt;
+    }
+
+    function begin(totalMs, seed) {
+      stop();
+      restDuration = totalMs / 1000;
+      placeScrollSteps();
+      visit = planVisit(Number.isFinite(seed) ? createSeededRandom(seed) : Math.random);
+      if (!visit) return;
+      index = 0;
+      age = distanceInWalk = runPhase = 0;
+      direction = -1;
+      cameraLead = 1.1;
+      fish.position.copy(visit.home);
+      teaProps.visible = visit.parts.some(part => part.mode === 'tea');
+      wallProps.visible = visit.parts.some(part => part.mode === 'touch');
+    }
+
+    function rampSpeed(u) {
+      const ramp = 0.16;
+      if (u < ramp) return u * u / (2 * ramp * (1 - ramp));
+      if (u > 1 - ramp) return 1 - rampSpeed(1 - u);
+      return (u - ramp / 2) / (1 - ramp);
+    }
+
+    function stageTea(t) {
+      const [, frame, holding] = teaFrames.findLast(([start]) => start <= t);
+      const sip = smooth01(t, 1.76, 2.15) * (1 - smooth01(t, 2.65, 2.98));
+      poseFish(frame, 1, 1 + 0.003 * sip * Math.sin(t * 5), 0.012 * sip);
+      fishCup.visible = !holding;
+    }
+
+    function update(dt, remainingMs) {
+      if (!fishReady || !visit) return;
+      const reel = visit.parts;
+      const secondsLeft = remainingMs / 1000;
+      if (!returnView) {
+        if (restDuration - secondsLeft < visit.arrival) return;
+        if (secondsLeft < visit.duration + cameraLead + 1) {
+          stop(false);
+          return;
+        }
+        returnView = introPhase ? 'close' : activeView.name;
+        fishView.fov = fishViewFov();
+        window.shrineView('fishVisit', true);
+      }
+      if (activeView.name === 'fishVisit') goal.fov = fishViewFov();
+      if (cameraLead > 0) {
+        cameraLead -= dt;
+        return;
+      }
+      age += dt;
+      if (age >= reel[index].seconds) {
+        age -= reel[index].seconds;
+        index++;
+        if (index === reel.length) {
+          if (activeView.name === 'fishVisit') window.shrineView(returnView, true);
+          stop(false);
+          return;
+        }
+        distanceInWalk = 0;
+        runPhase = 0;
+        scrollGroup.rotation.z = scrollHangTilt;
+      }
+      const part = reel[index];
+      const u = Math.min(1, age / part.seconds);
+      const walking = part.mode === 'walk' || part.mode === 'run';
+      let support = fishFloor;
+      if (walking) {
+        part.path.getPointAt(rampSpeed(u), positionNext);
+        travel.subVectors(positionNext, fish.position);
+        const distance = Math.hypot(travel.x, travel.z);
+        const pace = distance / Math.max(dt, 0.001);
+        distanceInWalk += distance;
+        runPhase = (runPhase + distance / 0.68) % 1;
+        direction = part.facing;
+        const step = Math.floor(distanceInWalk / 0.45 * walkFrames.length) % walkFrames.length;
+        const turning = u < 0.13 || u > 0.87;
+        if (turning) {
+          const turnProgress = u < 0.13 ? u / 0.13 : (1 - u) / 0.13;
+          const turn = Math.min(5, Math.floor(turnProgress * 6));
+          poseFish('t' + turn, direction);
+        } else if (part.mode === 'run' && pace > 0.84) {
+          const frame = runFrames[Math.floor(runPhase * runFrames.length)];
+          positionNext.y += fishFrames[frame].lift + 0.009 * Math.sin(runPhase * Math.PI * 4) ** 2;
+          poseFish(frame, direction);
+        } else {
+          poseFish(walkFrames[step], direction);
+        }
+      } else if (part.mode === 'hop') {
+        const flight = smooth01(u, 0.13, 0.83);
+        positionNext.lerpVectors(part.start, part.end, flight);
+        const rise = part.end.y - part.start.y;
+        const vertical = rise > 0 ? 1 - (1 - flight) ** 3 : flight ** 3;
+        positionNext.y = part.start.y + rise * vertical + 0.14 * Math.sin(Math.PI * flight);
+        const z = positionNext.z;
+        if (z <= -1.67 && z >= -2.15) support = wallFeet.y;
+        else if (z <= -1.275 && z >= -1.625) support = wallStep.y;
+        poseFish(jumpFrames[Math.min(9, Math.floor(u * 10))], part.facing);
+      } else {
+        positionNext.copy(part.point);
+        support = part.point.y;
+        if (part.mode === 'tea') {
+          stageTea(age);
+        } else if (part.mode === 'touch') {
+          const reach = smooth01(u, 0.16, 0.40) * (1 - smooth01(u, 0.69, 0.88));
+          if (reach > 0.16) {
+            const rock = (1 - reach) * -0.09;
+            poseFish('touch', -1, 1, rock);
+          } else {
+            poseFish('idle', -1);
+          }
+          const wobble = Math.max(0, age - 0.84);
+          scrollGroup.rotation.z = scrollHangTilt + Math.sin(wobble * 20) * Math.exp(-wobble * 5) * 0.006;
+        } else if (part.mode === 'peek') {
+          poseFish('peek', -1, 1, 0.11 * Math.sin(Math.PI * u));
+        } else if (part.mode === 'look') {
+          poseFish('idle', part.facing, 1, -0.045 * Math.sin(u * Math.PI));
+        } else {
+          poseFish('idle', part.facing);
+        }
+      }
+      fish.position.copy(positionNext);
+      fish.visible = true;
+      fishShadow.visible = true;
+      fishShadow.position.set(fish.position.x, support + 0.002, fish.position.z + 0.018);
+      fishShadow.material.opacity = 0.54 * Math.exp(-3.4 * Math.max(0, fish.position.y - support));
+    }
+
+    async function loadFishArt() {
+      const images = {};
+      await Promise.all(Object.entries(art.atlases).map(async ([key, src]) => {
+        const image = new Image();
+        image.src = src;
+        await image.decode();
+        images[key] = image;
+      }));
+      for (const [key, frame] of Object.entries(fishFrames)) {
+        const [x, y, width, height] = frame.rect;
+        const canvas = document.createElement('canvas');
+        const scale = lowEnd ? 0.72 : 1;
+        canvas.width = Math.max(1, Math.round(width * scale));
+        canvas.height = Math.max(1, Math.round(height * scale));
+        canvas.getContext('2d').drawImage(
+          images[frame.atlas], x, y, width, height, 0, 0, canvas.width, canvas.height);
+        const texture = new THREE.CanvasTexture(canvas);
+        texture.colorSpace = THREE.SRGBColorSpace;
+        fishTextures[key] = texture;
+      }
+      fishReady = true;
+    }
+    loadFishArt().catch(error => console.warn('大肥鱼素材加载失败', error));
+    return {begin, update, stop};
+  }
+
+  const fishArt = /* FISH_ART */ null;
+  const fishVisitor = fishArt ? createFishVisitor(fishArt) : null;
 
   camera.position.copy(VIEWS.front.pos);
   camera.lookAt(VIEWS.front.target);

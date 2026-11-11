@@ -93,6 +93,7 @@ function RestScreen(props: { display: Display }) {
         locked: restInputLocked(),
         outro: restFinishing(),
         active: phase() === "rest",
+        visitSeed: restEnd(),
         label: phaseLine(),
         display: props.display.name,
       }),

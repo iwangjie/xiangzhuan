@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Embed the shrine page, three.js, and the calligraphy font into one TS string.
+"""Embed the shrine page and its assets into one TS string.
 
 `test/rest-shrine.html` is the source; `assets/three/three.min.js` is the UMD
 build the page expects on `window.THREE`. Run from the repo root after
@@ -18,6 +18,7 @@ SOURCE = ROOT / "test" / "rest-shrine.html"
 THREE = ROOT / "assets" / "three" / "three.min.js"
 FONT = ROOT / "assets" / "fonts" / "shrine-calligraphy.woff"
 FONT_LICENSE = FONT.with_name("ZhiMangXing-OFL.txt")
+FISH_DIR = ROOT / "assets" / "fish"
 OUT = ROOT / "src" / "shrine-html.ts"
 
 
@@ -32,6 +33,20 @@ def main() -> int:
     html = html.replace(font_url, f"data:font/woff;base64,{font_data}", 1)
     license_text = FONT_LICENSE.read_text(encoding="utf-8").rstrip()
     html = html.replace("</head>", f"<!--\n{license_text}\n-->\n</head>", 1)
+
+    fish_marker = "/* FISH_ART */ null"
+    if html.count(fish_marker) != 1:
+        raise SystemExit(f"{SOURCE} must have one fish asset marker")
+    fish_art = json.loads((FISH_DIR / "frames.json").read_text(encoding="utf-8"))
+    for name, filename in fish_art["atlases"].items():
+        data = base64.b64encode((FISH_DIR / filename).read_bytes()).decode("ascii")
+        fish_art["atlases"][name] = f"data:image/webp;base64,{data}"
+    html = html.replace(fish_marker, json.dumps(fish_art, separators=(",", ":")), 1)
+    fish_notices = "\n\n".join(
+        (FISH_DIR / filename).read_text(encoding="utf-8").rstrip()
+        for filename in ("NOTICE.md", "YunYueSama-LICENSE.txt")
+    )
+    html = html.replace("</body>", f"<!--\n{fish_notices}\n-->\n</body>", 1)
 
     # The page must not fetch the library: it is injected below.
     html = re.sub(

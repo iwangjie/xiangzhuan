@@ -57,7 +57,7 @@ open -g /Applications/香篆.app
 ```json
 { "type": "state", "remainingMs": 0, "totalMs": 90000, "progress": 0.4,
   "canPostpone": true, "canSkip": true, "forced": false, "locked": false,
-  "outro": false, "active": true, "label": "把眼睛从屏幕上移开。",
+  "outro": false, "active": true, "visitSeed": 1794362490000, "label": "把眼睛从屏幕上移开。",
   "display": "Built-in Retina Display" }
 ```
 
@@ -65,6 +65,7 @@ open -g /Applications/香篆.app
 
 页面侧入口：`window.shrineState(state)`、`window.shrineView(name, silent)`。
 **倒计时一律用 `remainingMs`**，不要在页面里自己累加时间；`active` 由 false 变 true 才算新一轮（重抽挂轴、复位壶与杯）。
+大肥鱼使用本轮开始时的 `visitSeed` 抽签。宿主发送休息截止时间作为种子，让不同显示器选到同一出场时机和动作顺序。
 
 ## 场景维护（`test/rest-shrine.html`）
 
