@@ -1,12 +1,13 @@
 #!/usr/bin/env python3
-"""Embed the shrine page and three.js into one TS string.
+"""Embed the shrine page, three.js, and the calligraphy font into one TS string.
 
 `test/rest-shrine.html` is the source; `assets/three/three.min.js` is the UMD
 build the page expects on `window.THREE`. Run from the repo root after
-editing either.
+editing the page or its assets.
 """
 from __future__ import annotations
 
+import base64
 import json
 import re
 import sys
@@ -15,12 +16,22 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parent.parent
 SOURCE = ROOT / "test" / "rest-shrine.html"
 THREE = ROOT / "assets" / "three" / "three.min.js"
+FONT = ROOT / "assets" / "fonts" / "shrine-calligraphy.woff"
+FONT_LICENSE = FONT.with_name("ZhiMangXing-OFL.txt")
 OUT = ROOT / "src" / "shrine-html.ts"
 
 
 def main() -> int:
     html = SOURCE.read_text(encoding="utf-8")
     three = THREE.read_text(encoding="utf-8")
+
+    font_url = "../" + FONT.relative_to(ROOT).as_posix()
+    if font_url not in html:
+        raise SystemExit(f"{SOURCE} has no font URL for {FONT.name}")
+    font_data = base64.b64encode(FONT.read_bytes()).decode("ascii")
+    html = html.replace(font_url, f"data:font/woff;base64,{font_data}", 1)
+    license_text = FONT_LICENSE.read_text(encoding="utf-8").rstrip()
+    html = html.replace("</head>", f"<!--\n{license_text}\n-->\n</head>", 1)
 
     # The page must not fetch the library: it is injected below.
     html = re.sub(
