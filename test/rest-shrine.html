@@ -2350,8 +2350,13 @@ vec3 fishShadeTressesBase(vec3 color, vec3 detail, vec3 position, vec3 normal, f
 }
 
 
-// Keep the high-detail portrait on the face and let the surrounding hair
-// read as a continuous surface under the same window light as the ribbons.
+float fishRearRootMask(vec3 p) {
+  float taper=smoothstep(0.196,0.238,p.y)*(1.0-smoothstep(0.355,0.397,p.y));
+  float back=smoothstep(0.077,0.130,-p.z);
+  return taper*back*(1.0-smoothstep(0.105,0.205,abs(p.x)));
+}
+
+// Keep the high-detail portrait on the face and light the crown in the room.
 vec3 fishShadeCrown(vec3 color, vec3 base, vec3 p, vec3 viewN, vec3 viewP) {
   // Fill the pale scan mark on the blue temple lock with adjacent pigment.
   vec3 offset = abs(p-vec3(0.121,0.121,0.214))/vec3(0.006,0.027,0.018);
@@ -2369,7 +2374,8 @@ vec3 fishShadeCrown(vec3 color, vec3 base, vec3 p, vec3 viewN, vec3 viewP) {
     * smoothstep(0.013,0.059,color.b-color.g);
   float curlMask = smoothstep(0.373,0.421,p.y)*smoothstep(0.105,0.135,p.z)
     * (1.0-smoothstep(-0.086,-0.030,p.x));
-  float zone = max(max(crown,temple*0.83),curlMask*0.70)*baseBlue*paintedBlue;
+  float zone = max(max(crown,temple*0.83),curlMask*0.70)*baseBlue*paintedBlue
+    *(1.0-0.79*fishRearRootMask(p));
   vec3 localDx=dFdx(p), localDy=dFdy(p);
   vec3 dx=dFdx(viewP), dy=dFdy(viewP);
   if(zone<0.004) return color;
@@ -2487,7 +2493,10 @@ vec3 fishShadeTresses(vec3 color, vec3 detail, vec3 p, vec3 bindN, vec3 viewN,
   float depth=0.027-p.z;
   float theta=atan(p.x,depth+1e-6);
   float along=(0.30-p.y)/0.61;
-  vec2 uv=vec2((theta+1.67)/3.34,along/1.24);
+  float crownRoot=fishRearRootMask(p);
+  float rootHeight=mix(0.218,0.294,smoothstep(0.218,0.374,p.y));
+  float guideHeight=mix(p.y,rootHeight,crownRoot);
+  vec2 uv=vec2((theta+1.67)/3.34,(0.30-guideHeight)/(0.61*1.24));
   #if FISH_TEXTURE_GRADIENTS
   vec2 guideDx=dFdx(uv), guideDy=dFdy(uv);
   #else
@@ -2506,7 +2515,10 @@ vec3 fishShadeTresses(vec3 color, vec3 detail, vec3 p, vec3 bindN, vec3 viewN,
   float rearSurface=smoothstep(-0.35,0.32,outward);
   // Blend the rear material into the crown in bind space.
   float crownProtection=1.0-smoothstep(0.160,0.320,p.y);
-  float outerHair=max(max(detail.x,side*0.57)*rearSurface,tips*0.91*max(rearSurface,0.58));
+  float broadRear=smoothstep(0.151,0.204,depth)*(1.0-smoothstep(0.90,1.30,abs(theta)))
+    *smoothstep(-0.408,-0.378,p.y)*(1.0-smoothstep(0.217,0.270,p.y))*rearSurface;
+  float outerHair=max(max(max(detail.x,side*0.57)*rearSurface,broadRear*0.94),
+    tips*0.91*max(rearSurface,0.58));
   float shoulderLock = smoothstep(0.157,0.206,abs(p.x))
     * smoothstep(-0.247,-0.173,p.y)*(1.0-smoothstep(0.219,0.266,p.y))
     * smoothstep(0.96,1.14,abs(theta))*(1.0-smoothstep(1.54,1.68,abs(theta)));
@@ -2515,7 +2527,8 @@ vec3 fishShadeTresses(vec3 color, vec3 detail, vec3 p, vec3 bindN, vec3 viewN,
     * smoothstep(0.032,0.110,p.y);
   float sideView = 1.0-smoothstep(0.28,0.78,frontFacing);
   float sideBalance = mix(0.70,1.0,smoothstep(-0.02,0.02,p.x));
-  float coverage=max(outerHair*rear*crownProtection,shoulderLock*behindFin*sideView*sideBalance*0.9460000000000001)*pigment
+  float rearBody=max(outerHair*rear*crownProtection,0.93*crownRoot);
+  float coverage=max(rearBody,shoulderLock*behindFin*sideView*sideBalance*0.946)*pigment
     * (1.0-smoothstep(0.20,0.57,frontCoverage))
     * (1.0-smoothstep(0.20,0.71,sidePolish.y));
   if(coverage<0.004)return color;
@@ -2553,7 +2566,13 @@ vec3 fishShadeTresses(vec3 color, vec3 detail, vec3 p, vec3 bindN, vec3 viewN,
   // Emphasize the painted joins through the body of the rear locks.
   float inkRegion=smoothstep(0.27,0.33,uv.x)*(1.0-smoothstep(0.69,0.745,uv.x))
     * smoothstep(0.13,0.24,uv.y)*(1.0-smoothstep(0.68,0.88,uv.y));
-  shade*=0.92+0.16*crest+0.12*light+0.06*bounced-(0.46+0.240*inkRegion)*groove;
+  float rearGroom=max(broadRear*rear,crownRoot)*(1.0-smoothstep(0.09,0.50,frontCoverage));
+  shade=mix(shade,mix(shadow,lift,0.17+0.62*crest+0.13*light+0.06*bounced),rearGroom*0.81);
+  shade*=0.92+0.16*crest+0.12*light+0.06*bounced
+    -(0.46+max(0.24*inkRegion,0.39*rearGroom))*groove;
+  float seamInk=rearGroom*smoothstep(0.50,0.83,groove);
+  shade=mix(shade,mix(vec3(0.017,0.025,0.084),vec3(0.032,0.058,0.157),ends),seamInk*0.67);
+
   float reflection=smoothstep(0.08,0.83,guide.g)*(0.40+0.60*light)*(1.0-0.85*groove);
   shade+=vec3(0.115,0.171,0.306)*reflection;
   shade+=vec3(0.018,0.039,0.076)*shoulder*(1.0-0.73*groove);
@@ -8821,7 +8840,8 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
         finalCol = fishPolishSideLock(finalCol,baseCol,vLocalPos,
           normalize(vStudioNormal),vStudioPos,vFrontFacing);
         finalCol = fishShadeCrown(finalCol,baseCol,vLocalPos,normalize(vStudioNormal),vStudioPos);
-        finalCol = mix(finalCol,rearArt,rearArtWeight*0.330*(1.0-0.96*fWeight));
+        // Keep the reference hue while shading each overlapping lock.
+        finalCol = mix(finalCol,rearArt,rearArtWeight*0.205*(1.0-0.96*fWeight));
         finalCol = fishShadeEarFin(finalCol,vLocalPos,normalize(vStudioNormal),vStudioPos);
         finalCol = fishShadeTailHem(finalCol, vLocalPos, vLocalNormal, vSidePolish.y, fWeight);
 
