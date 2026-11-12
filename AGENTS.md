@@ -12,7 +12,7 @@ macOS 菜单栏的专注 / 休息提醒。用 nsh（AppKit 原生视图 + TSX）
 
 ## 四条硬规则
 
-1. **`src/shrine-html.ts` 是生成物，永远不手改。** 改 `test/rest-shrine.html`，然后 `python3 scripts/embed-shrine.py`。这个脚本会把 `assets/three/three.min.js` 内联进页面并转义 `</script`。
+1. **`src/shrine-html.ts` 是生成物，永远不手改。** 改 `test/rest-shrine.html` 或它引用的素材，然后 `python3 scripts/embed-shrine.py`。脚本会把 Three.js 和离线 3D 数据内联进页面并转义 `</script`。
 2. **`storage.json` 的两个 key 是冻结的**（`src/state.ts` 顶部的 `SETTINGS_KEY` / `STATS_KEY`，故意是不可读字符串）。改 key = 老用户的设置和当日统计清零。
 3. **`hideDockIcon` 有一条跨语言契约**：`saveSettings()` 往 storage 里另写一个裸 key `hideDockIcon`（`"1"` 隐藏 / `"0"` 显示），`native/dock_hide.m` 每 0.1s 轮询它来切 `NSApplication` 的 activation policy。缺省视为隐藏。改任一侧都要同时改另一侧。
 4. **休息锁也有一条跨语言契约**：`startRest / closeRestWindows` 通过 `publishRestBridge()` 写裸 key `restActive` / `restLock`（`"1"` / `"0"`）。`restLock` 为 1 时，`native/dock_hide.m` 把休息窗抬到 `NSScreenSaverWindowLevel`、禁用切屏、用本地事件监视器吞掉键盘和鼠标；`restActive` 归 0 时恢复原窗口层级与 activation 选项，并激活休息前最前面的那个 App。`settings.lockRest` 默认 true，存在设置 blob 里，不要和这两个瞬态 key 混用。
@@ -88,7 +88,7 @@ open -g /Applications/香篆.app
 
 **不要为了看场景在用户机器上弹出全屏休息窗，也不要截用户桌面。** 用浏览器预览：
 
-1. 从 `test/rest-shrine.html` 生成一份临时预览：把 `<script>` 前插一行 `<script src="../assets/three/three.min.js"></script>`，并在 `requestAnimationFrame(animate);\n})();` 之前注入
+1. 复制 `test/rest-shrine.html` 为临时预览文件，在最后一个 `})();` 之前注入
    `window.__seek = (s) => { outroStarted = true; outroElapsed = s; diving = true; };`（必须在 IIFE 内，别插到 `})();` 之后）。
 2. `python3 -m http.server 8788 --bind 127.0.0.1`（仓库根目录），浏览器打开 `test/xxx-preview.html`。
 3. 开场自动演示，或 `window.shrineState({...})` 造状态；`__seek(t)` 后要等约 0.5–0.7s 让镜头阻尼收敛。
