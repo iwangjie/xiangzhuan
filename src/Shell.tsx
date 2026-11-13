@@ -15,9 +15,11 @@ import {
   restForced,
   restInputLocked,
   saveSettings,
+  setAllowSkip,
   settings,
   settingsLoaded,
   showApp,
+  skipEnabled,
   skipRest,
   startFocus,
   startRest,
@@ -82,8 +84,8 @@ function trayMenu(): (MenuItem | false)[] {
     { type: "separator" },
     {
       label: "允许跳过休息",
-      checked: settings().allowSkip,
-      onSelect: () => updateSettings({ allowSkip: !settings().allowSkip }),
+      checked: skipEnabled(),
+      onSelect: () => setAllowSkip(!skipEnabled()),
     },
     {
       label: "登录时启动",

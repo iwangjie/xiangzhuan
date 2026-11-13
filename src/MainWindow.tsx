@@ -30,9 +30,11 @@ import {
   restForced,
   restInputLocked,
   resumeFocus,
+  setAllowSkip,
   settings,
   setWorkMinutes,
   showApp,
+  skipEnabled,
   skipRest,
   startFocus,
   startRest,
@@ -282,13 +284,12 @@ export function MainWindow() {
                 <View style={{ flex: 1, gap: 2 }}>
                   <Text class="text-[12px] font-medium text-foreground">允许跳过休息</Text>
                   <Text class="text-[10px] leading-4 text-muted-foreground">
-                    {settings().lockRest ? "锁定休息时不可用" : "关掉后，只能等香燃尽或延后"}
+                    {settings().lockRest ? "开启后会解除休息时的输入锁定" : "关闭后仍可延后休息"}
                   </Text>
                 </View>
                 <Switch
-                  checked={settings().allowSkip}
-                  disabled={settings().lockRest}
-                  onChange={({ checked }) => updateSettings({ allowSkip: checked })}
+                  checked={skipEnabled()}
+                  onChange={({ checked }) => setAllowSkip(checked)}
                   accessibilityLabel="允许跳过休息"
                   trackClass="h-6 w-11 rounded-full bg-muted p-0.5 transition-colors checked:bg-primary"
                   thumbClass="size-5 rounded-full bg-background shadow-sm transition-transform checked:translate-x-5"
