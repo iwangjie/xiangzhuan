@@ -1,8 +1,8 @@
 {
   "name": "香篆",
   "id": "com.iwangjie.xiangzhuan",
-  "version": "1.1.0",
-  "build": 2,
+  "version": "1.2.0",
+  "build": 7,
   "icon": "assets/icon.png",
   "appearance": "light",
   "theme": "theme.json",
@@ -38,6 +38,7 @@
     "fs": {
       "read": [
         "${homeDir}/Library/LaunchAgents",
+        "${homeDir}/Library/Application Support/com.iwangjie.xiangzhuan/input-activity",
         "/Applications/香篆.app"
       ],
       "write": [

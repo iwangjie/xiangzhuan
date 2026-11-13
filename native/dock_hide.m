@@ -11,12 +11,69 @@
 // keyboard/mouse events; when `restActive` drops it restores the options and
 // the window levels and activates the app that was in front before the rest.
 #import <AppKit/AppKit.h>
+#import <CoreGraphics/CoreGraphics.h>
 #import <objc/runtime.h>
+#import <math.h>
 
 static NSString *bundleId;
 static NSString *prefPath;
 static BOOL hideDock = YES;
 static NSTimer *pollTimer;
+
+// MARK: Input activity
+
+// Publish timestamps separately from nsh's storage.json. Record the most
+// recent completed idle interval so the host can still see it after wake.
+static void publishInputActivity(void) {
+  static double lastInputAt, lastSampleAt, lastInputOnClock;
+  static NSArray *lastAway;
+  static double publishedSince;
+  static BOOL pendingWrite;
+  static BOOL hadSample;
+  const double idleThreshold = 5 * 60 * 1000;
+  double at = NSDate.date.timeIntervalSince1970 * 1000.0;
+  double uptime = NSProcessInfo.processInfo.systemUptime * 1000.0;
+  double idle = CGEventSourceSecondsSinceLastEventType(kCGEventSourceStateHIDSystemState,
+                                                       kCGAnyInputEventType) * 1000.0;
+  if (!isfinite(idle) || idle < 0) return;
+  double inputOnClock = uptime - idle;
+  BOOL inputChanged = !hadSample || inputOnClock > lastInputOnClock + 20;
+  // If the device slept between samples, preserve the original wall-clock
+  // start unless a new input event has actually been observed.
+  if (inputChanged) {
+    double inputAt = round(at - idle);
+    if (hadSample && inputAt - lastInputAt >= idleThreshold) {
+      lastAway = @[ @(lastInputAt), @(inputAt) ];
+      pendingWrite = YES;
+    }
+    lastInputAt = inputAt;
+    lastInputOnClock = inputOnClock;
+  } else if (at < lastSampleAt) {
+    lastInputAt = round(at - idle);
+    lastAway = nil;
+    pendingWrite = YES;
+  }
+  // Send the last input time shortly before the pause boundary so the
+  // host can pause at the exact time. Active input does not write to disk.
+  double idleSince = at - lastInputAt >= idleThreshold - 1000 ? lastInputAt : 0;
+  pendingWrite = pendingWrite || !hadSample || idleSince != publishedSince;
+  lastSampleAt = at;
+  if (!pendingWrite) return;
+  NSString *directory = [prefPath.stringByDeletingLastPathComponent stringByAppendingPathComponent:@"input-activity"];
+  if (!hadSample) {
+    [NSFileManager.defaultManager createDirectoryAtPath:directory
+                           withIntermediateDirectories:YES attributes:nil error:NULL];
+  }
+  hadSample = YES;
+  NSString *path = [directory stringByAppendingPathComponent:@"snapshot.json"];
+  NSDictionary *state = @{
+    @"idleSince": idleSince ? @(idleSince) : NSNull.null,
+    @"lastAway": lastAway ?: NSNull.null
+  };
+  NSData *data = [NSJSONSerialization dataWithJSONObject:state options:0 error:NULL];
+  pendingWrite = ![data writeToFile:path options:NSDataWritingAtomic error:NULL];
+  if (!pendingWrite) publishedSince = idleSince;
+}
 
 // MARK: Dock policy
 
@@ -310,6 +367,13 @@ __attribute__((constructor)) static void install(void) {
       hideDock = !([value isKindOfClass:NSString.class] && [value isEqualToString:@"0"]);
     }
     applyPolicy();
+
+    publishInputActivity();
+    NSTimer *activityTimer = [NSTimer timerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *timer) {
+      (void)timer;
+      publishInputActivity();
+    }];
+    [[NSRunLoop mainRunLoop] addTimer:activityTimer forMode:NSRunLoopCommonModes];
 
     pollTimer = [NSTimer timerWithTimeInterval:0.1
                                        repeats:YES

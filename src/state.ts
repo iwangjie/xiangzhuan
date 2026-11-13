@@ -1,4 +1,4 @@
-import { computed, signal, Storage } from "nsh";
+import { batch, computed, signal, Storage } from "nsh";
 import { displays, Window } from "nsh/desktop";
 
 export type Phase = "idle" | "focus" | "rest" | "postpone";
@@ -58,6 +58,10 @@ export const restEnd = signal<number | null>(null);
 export const restOpen = signal(false);
 export const paused = signal(false);
 let pausedAt: number | null = null;
+const idlePausedAt = signal<number | null>(null);
+export const idlePaused = computed(() => idlePausedAt() !== null);
+let focusStartedAt = 0;
+let lastHandledReturnAt = 0;
 export const restForced = signal(false);
 export const forceNext = signal(false);
 export const postpones = signal(0);
@@ -73,6 +77,12 @@ export const restFinishing = signal(false);
 let finishTimer: number | null = null;
 
 const OUTRO_MS = 12000;
+const FOCUS_IDLE_MS = 5 * 60_000;
+
+export interface InputActivity {
+  idleSince: number | null;
+  lastAway: { since: number; until: number } | null;
+}
 
 function clearFinishTimer(): void {
   if (finishTimer != null) {
@@ -100,8 +110,8 @@ export const remainingMs = computed(() => {
   if (p === "focus" || p === "postpone") {
     const end = focusEnd();
     if (end == null) return workMs();
-    if (paused() && pausedAt != null) return Math.max(0, end - pausedAt);
-    return Math.max(0, end - at);
+    const frozen = paused() ? pausedAt : idlePausedAt();
+    return Math.max(0, end - (frozen ?? at));
   }
   return workMs();
 });
@@ -128,7 +138,7 @@ export const skipEnabled = computed(() => settings().allowSkip && !settings().lo
 export const phaseLabel = computed(() => {
   switch (phase()) {
     case "focus":
-      return paused() ? "暂停" : "专注";
+      return paused() ? "暂停" : idlePaused() ? "空闲暂停" : "专注";
     case "rest":
       return "休息";
     case "postpone":
@@ -141,7 +151,8 @@ export const phaseLabel = computed(() => {
 export const phaseLine = computed(() => {
   switch (phase()) {
     case "focus":
-      return paused() ? "已暂停，点继续。" : "香正在燃，别急。";
+      if (paused()) return "已暂停，点继续。";
+      return idlePaused() ? "空闲已暂停，操作键鼠后继续。" : "香正在燃，别急。";
     case "rest":
       return restForced() || restInputLocked() ? "这炷香，要燃尽。" : "把眼睛从屏幕上移开。";
     case "postpone":
@@ -237,17 +248,29 @@ export function setAllowSkip(allowSkip: boolean): void {
 
 export function startFocus(): void {
   if (phase() === "rest") return;
+  batch(() => startFocusCountdown(Date.now()));
+}
+
+function startFocusCountdown(at: number, left = workMs()): void {
+  focusStartedAt = at;
+  lastHandledReturnAt = at;
+  focusEnd.set(at + left);
+  now.set(at);
   paused.set(false);
   pausedAt = null;
+  idlePausedAt.set(null);
   phase.set("focus");
-  focusEnd.set(Date.now() + workMs());
 }
 
 export function pauseFocus(): void {
   if (phase() !== "focus" || paused()) return;
-  pausedAt = Date.now();
-  paused.set(true);
-  now.set(pausedAt);
+  batch(() => {
+    const at = Date.now();
+    pausedAt = idlePausedAt() ?? at;
+    paused.set(true);
+    idlePausedAt.set(null);
+    now.set(at);
+  });
 }
 
 export function resumeFocus(): void {
@@ -255,9 +278,7 @@ export function resumeFocus(): void {
   const end = focusEnd();
   const from = pausedAt ?? Date.now();
   const left = end == null ? workMs() : Math.max(0, end - from);
-  pausedAt = null;
-  paused.set(false);
-  focusEnd.set(Date.now() + left);
+  batch(() => startFocusCountdown(Date.now(), left));
 }
 
 export function togglePause(): void {
@@ -271,7 +292,7 @@ export function setWorkMinutes(minutes: number): void {
   const end = focusEnd();
   if (phase() === "focus" && end != null) {
     const oldTotal = workMs();
-    const at = paused() ? (pausedAt ?? Date.now()) : Date.now();
+    const at = (paused() ? pausedAt : idlePausedAt()) ?? Date.now();
     const left = Math.max(0, end - at);
     const part = oldTotal > 0 ? left / oldTotal : 1;
     focusEnd.set(at + next * 60_000 * part);
@@ -285,6 +306,7 @@ export function startRest(completedWork = false): void {
   restReturn = phase() === "idle" ? "idle" : "focus";
   paused.set(false);
   pausedAt = null;
+  idlePausedAt.set(null);
   restForced.set(forceNext());
   clearFinishTimer();
   restGeneration++;
@@ -310,8 +332,7 @@ function nextWork(): void {
     phase.set("idle");
     focusEnd.set(null);
   } else {
-    phase.set("focus");
-    focusEnd.set(Date.now() + workMs());
+    startFocusCountdown(Date.now());
   }
 }
 
@@ -374,6 +395,7 @@ export function stopCycle(): void {
   clearFinishTimer();
   paused.set(false);
   pausedAt = null;
+  idlePausedAt.set(null);
   if (phase() === "rest") {
     restEnd.set(null);
     restForced.set(false);
@@ -383,9 +405,40 @@ export function stopCycle(): void {
   focusEnd.set(null);
 }
 
-export function tick(): void {
+function applyFocusActivity(at: number, activity: InputActivity): void {
+  const away = activity.lastAway;
+  const end = focusEnd();
+  if (end == null) return;
+
+  if (away && away.until > lastHandledReturnAt && away.until <= at) {
+    lastHandledReturnAt = away.until;
+    if (away.until - away.since >= FOCUS_IDLE_MS) {
+      const frozen = idlePausedAt() ?? Math.max(focusStartedAt, away.since + FOCUS_IDLE_MS);
+      const left = away.until - away.since >= workMs() ? workMs() : Math.max(0, end - frozen);
+      focusEnd.set(away.until + left);
+      focusStartedAt = away.until;
+      idlePausedAt.set(null);
+    }
+  }
+
+  const since = activity.idleSince;
+  const frozen = idlePausedAt();
+  if (frozen != null && (since == null || at - since < FOCUS_IDLE_MS)) {
+    // An input may land between the native sample and the timer tick
+    // right at the threshold, before there is a completed idle interval.
+    focusEnd.set(at + Math.max(0, focusEnd()! - frozen));
+    idlePausedAt.set(null);
+  } else if (frozen == null && since != null && at - since >= FOCUS_IDLE_MS) {
+    idlePausedAt.set(Math.max(focusStartedAt, since + FOCUS_IDLE_MS));
+  }
+}
+
+export function tick(at = Date.now(), activity?: InputActivity): void {
+  batch(() => advanceClock(at, activity));
+}
+
+function advanceClock(at: number, activity?: InputActivity): void {
   ensureToday();
-  const at = Date.now();
   now.set(at);
   const p = phase();
   if (p === "rest") {
@@ -393,8 +446,12 @@ export function tick(): void {
     if (end != null && at >= end) finishRest();
     return;
   }
+  if (p === "focus") {
+    if (paused()) return;
+    if (activity) applyFocusActivity(at, activity);
+    if (idlePaused()) return;
+  }
   if (p === "focus" || p === "postpone") {
-    if (p === "focus" && paused()) return;
     const end = focusEnd();
     if (end != null && at >= end) startRest(p === "focus");
   }

@@ -1,11 +1,13 @@
 import { cleanup, computed, effect, keymap, lifecycle, untracked } from "nsh";
 import { Menu, Tray, type MenuItem } from "nsh/desktop";
 import trayIcon from "../assets/tray.svg";
+import { readInputActivity } from "./input-activity";
 import { ensureLoginItem, setLoginItem } from "./login-item";
 import {
   canPostponeNow,
   canSkipNow,
   formatClock,
+  idlePaused,
   loadSettings,
   paused,
   phase,
@@ -42,6 +44,7 @@ const trayLine = computed(() => {
 
 const statusLine = computed(() => {
   if (phase() === "idle") return "待燃";
+  if (phase() === "focus" && idlePaused()) return `空闲暂停 · ${trayTime()}`;
   if (phase() === "rest" && restInputLocked()) return "锁定休息中";
   if (phase() === "rest" && restForced()) return "强制休息中";
   return `${phaseLabel()}中 · ${trayTime()}`;
@@ -186,14 +189,31 @@ export function Shell() {
     { when: "notEditing" },
   );
 
+  let checkingInput = false;
+  let disposed = false;
+  const pulse = () => {
+    if (phase() !== "focus" || paused()) {
+      tick();
+      return;
+    }
+    if (checkingInput) return;
+    checkingInput = true;
+    void readInputActivity().then((activity) => {
+      if (!disposed) tick(Date.now(), activity);
+    }).finally(() => { checkingInput = false; });
+  };
+
   effect(() => {
-    untracked(tick);
-    const timer = setInterval(() => tick(), 250);
-    cleanup(() => clearInterval(timer));
+    untracked(pulse);
+    const timer = setInterval(pulse, 250);
+    cleanup(() => {
+      disposed = true;
+      clearInterval(timer);
+    });
   });
 
   effect(() => {
-    if (lifecycle() === "active") untracked(tick);
+    if (lifecycle() === "active") untracked(pulse);
   });
 
   let loginChecked = false;
