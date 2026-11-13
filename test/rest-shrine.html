@@ -9046,7 +9046,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       <div id="countdown">01:30</div>
       <div id="display-name">Built-in Retina Display</div>
       <div class="actions-bar" id="actions-bar">
-        <button class="action-link" id="btn-postpone" type="button">延后五分</button>
+        <button class="action-link" id="btn-postpone" type="button">延后 5 分钟</button>
         <button class="action-link" id="btn-skip" type="button">提前结束</button>
         <span class="esc-hint" id="esc-hint">ESC 结束</span>
       </div>
@@ -9090,6 +9090,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     progress: 0.0,
     targetProgress: 0.0,
     canPostpone: true,
+    postponeMinutes: 5,
     canSkip: true,
     forced: false,
     locked: false,
@@ -9150,6 +9151,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     const showPostpone = !locked && !appState.forced && appState.canPostpone !== false;
     const showSkip = !locked && !appState.forced && appState.canSkip !== false;
 
+    dom.btnPostpone.textContent = '延后 ' + appState.postponeMinutes + ' 分钟';
     dom.btnPostpone.classList.toggle('hidden', !showPostpone);
     dom.btnSkip.classList.toggle('hidden', !showSkip);
     dom.escHint.classList.toggle('hidden', !showSkip);
@@ -9201,6 +9203,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     }
 
     if (typeof s.canPostpone === 'boolean') appState.canPostpone = s.canPostpone;
+    if (Number.isFinite(s.postponeMinutes) && s.postponeMinutes > 0) appState.postponeMinutes = s.postponeMinutes;
     if (typeof s.canSkip === 'boolean') appState.canSkip = s.canSkip;
     if (typeof s.forced === 'boolean') appState.forced = s.forced;
     if (typeof s.locked === 'boolean') appState.locked = s.locked;

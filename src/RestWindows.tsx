@@ -14,6 +14,7 @@ import {
   restInputLocked,
   restMs,
   restOpen,
+  settings,
   skipRest,
 } from "./state";
 import { SHRINE_HTML } from "./shrine-html";
@@ -88,6 +89,7 @@ function RestScreen(props: { display: Display }) {
         totalMs: total,
         progress: Math.min(1, Math.max(0, 1 - left / total)),
         canPostpone: canPostponeNow(),
+        postponeMinutes: settings().postponeMinutes,
         canSkip: canSkipNow(),
         forced: restForced() || restInputLocked(),
         locked: restInputLocked(),

@@ -17,8 +17,10 @@ import {
   restInputLocked,
   restOpen,
   resumeFocus,
+  setAllowSkip,
   setWorkMinutes,
   settings,
+  skipEnabled,
   skipRest,
   startFocus,
   startRest,
@@ -65,6 +67,21 @@ test("the default rest locks out skipping and postponing", () => {
   expect(restOpen()).toBe(true);
 });
 
+test("enabling skipping unlocks rest actions from the default settings", () => {
+  reset();
+  settings.set({ ...DEFAULT_SETTINGS });
+  expect(skipEnabled()).toBe(false);
+  setAllowSkip(true);
+  expect(skipEnabled()).toBe(true);
+  expect(settings().lockRest).toBe(false);
+  restFromFocus();
+  expect(canSkipNow()).toBe(true);
+  expect(canPostponeNow()).toBe(true);
+  setAllowSkip(false);
+  expect(canSkipNow()).toBe(false);
+  expect(canPostponeNow()).toBe(true);
+});
+
 test("three postponements make the next rest forced", () => {
   reset();
   restFromFocus();
@@ -81,6 +98,8 @@ test("three postponements make the next rest forced", () => {
   finishRest();
   // The rest window keeps playing the burn-out/pour outro; it ends on "done".
   expect(phase()).toBe("rest");
+  expect(canPostponeNow()).toBe(false);
+  expect(canSkipNow()).toBe(false);
   finishOutro();
   expect(forceNext()).toBe(false);
   expect(phase()).toBe("focus");

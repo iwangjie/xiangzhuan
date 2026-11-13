@@ -123,6 +123,7 @@ export const remainingPart = computed(() => {
 /** The native rest lock is engaged for this rest. `restForced` is the
  * per-cycle rule; this is the user's blanket lock. */
 export const restInputLocked = computed(() => phase() === "rest" && settings().lockRest);
+export const skipEnabled = computed(() => settings().allowSkip && !settings().lockRest);
 
 export const phaseLabel = computed(() => {
   switch (phase()) {
@@ -153,13 +154,13 @@ export const phaseLine = computed(() => {
 export const canSkipNow = computed(
   () =>
     phase() === "rest" &&
-    !restInputLocked() &&
-    settings().allowSkip &&
+    !restFinishing() &&
+    skipEnabled() &&
     !restForced() &&
     stats().skips < Math.max(0, settings().maxDailySkips),
 );
 export const canPostponeNow = computed(
-  () => phase() === "rest" && !restInputLocked() && !restForced(),
+  () => phase() === "rest" && !restFinishing() && !restInputLocked() && !restForced(),
 );
 
 export function formatClock(ms: number): string {
@@ -228,6 +229,10 @@ export function saveStats(): void {
 export function updateSettings(patch: Partial<Settings>): void {
   settings.update((s) => ({ ...s, ...patch }));
   if (phase() === "rest") publishRestBridge(true);
+}
+
+export function setAllowSkip(allowSkip: boolean): void {
+  updateSettings(allowSkip ? { allowSkip, lockRest: false } : { allowSkip });
 }
 
 export function startFocus(): void {
