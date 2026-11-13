@@ -53,6 +53,18 @@
     cursor: grabbing;
   }
 
+  #fish-kiss-heart {
+    position: fixed;
+    z-index: 3;
+    top: 0;
+    left: 0;
+    pointer-events: none;
+    color: #efa1ad;
+    font: 24px/1 system-ui, sans-serif;
+    text-shadow: 0 2px 8px #61273588;
+    will-change: transform, opacity;
+  }
+
   /* 电影级光学暗角与上下柔化衬底，确保宣纸墨色文字在亮窗背景下清晰可读 */
   #vignette {
     position: fixed;
@@ -4911,10 +4923,39 @@ vec3 fishCleanHeadLacePigment(vec3 color, vec3 position, vec3 normal) {
 </script>
 <script>
 const fishGreetingSeconds = 2.28;
+const fishViewerGestures = {
+  jumpWave: [
+    [0,0,0,0,0], [.20,.40,.10,.30,0], [.33,.95,-.80,.90,0],
+    [.50,1,.85,1,.72], [.68,.95,-.75,.95,0], [.90,.40,0,.50,0], [1.15,0,0,0,0]
+  ],
+  airKiss: [
+    [0,0,0,0,0,0], [.30,.60,0,.50,.10,0], [.60,1,0,1,0,.85],
+    [.85,.95,.20,.80,.20,.80], [1.05,.30,.95,0,.95,0],
+    [1.25,.10,.60,0,.85,0], [1.45,.05,.20,0,.40,0], [1.65,0,0,0,0,0]
+  ],
+  dance: [
+    [0,0,0,0,0,0,0], [.30,-.008,.06,-.05,.14,.45,.22],
+    [.60,.005,-.09,.08,-.22,.85,.72], [.90,-.015,.11,-.10,.26,.95,.90],
+    [1.20,.006,-.06,.05,-.18,1,.78], [1.50,-.012,.08,-.07,.20,.85,.88],
+    [1.80,.004,-.04,.03,-.12,.65,.45], [2.10,-.006,.02,-.02,.06,.30,.15],
+    [2.40,0,0,0,0,0,0]
+  ]
+};
 
 function fishGreetingEase(value) {
   const t=Math.min(1,Math.max(0,value));
   return t*t*t*(10+t*(-15+6*t));
+}
+
+function sampleFishViewerGesture(keys,time,out) {
+  const next=keys.findIndex(key=>key[0]>time);
+  if(next<1) {
+    out.fill(0);
+    return;
+  }
+  const a=keys[next-1], b=keys[next];
+  const blend=fishGreetingEase((time-a[0])/(b[0]-a[0]));
+  for(let i=0;i<out.length;i++)out[i]=a[i+1]+(b[i+1]-a[i+1])*blend;
 }
 
 function evaluateFishGreeting(time, pose, face) {
@@ -4953,9 +4994,13 @@ function createFishGreeting(THREE,rig) {
   const restNormal=new THREE.Vector3(0,0,1).addScaledVector(axis,-axis.z).normalize();
   const front=new THREE.Vector3(), turned=new THREE.Vector3(), cross=new THREE.Vector3();
   const actual=new THREE.Vector3();
+  const kissTarget=new THREE.Vector3();
+  const kissTip=new THREE.Vector3();
+  const palmOffset=new THREE.Vector3();
   const status={active:false,rise:0,sway:0,palm:[0,0,0]};
-  function apply(rise,sway,cover) {
-    status.active=rise>0.0001;
+  function apply(rise,sway,cover,kissReach,kissRelease,highWave) {
+    const kiss=Math.max(kissReach,kissRelease);
+    status.active=Math.max(rise,kiss)>0.0001;
     status.rise=rise;
     status.sway=sway;
     if(!status.active){
@@ -4963,16 +5008,33 @@ function createFishGreeting(THREE,rig) {
       return;
     }
     arm.palmRestModel(neutral);
-    lifted.set(.188+.011*sway,-.025+.008*sway*sway,.219+.005*sway);
-    goal.lerpVectors(neutral,lifted,rise);
-    goal.z+=.031*Math.sin(Math.PI*rise);
-    direction.set(.33+.19*sway,.88-.07*sway,.34).normalize();
+    if(kiss>0 && rig.mouthSocket) {
+      // Aim the fingertips in front of the posed lips, then extend them
+      // outward. The IK limits the reach while keeping the elbow bent.
+      const release=kissRelease;
+      rig.head.localToWorld(kissTarget.copy(rig.mouthSocket));
+      rig.body.parent.worldToLocal(kissTarget);
+      lifted.copy(kissTarget);
+      lifted.x+=.012+.138*release;
+      lifted.y+=-.018+.064*release;
+      lifted.z+=.058+.076*release;
+      direction.set(-.68+.89*release,.66-.37*release,.33+.60*release).normalize();
+    } else {
+      lifted.set(.188+.018*sway+.018*highWave,-.025+.008*sway*sway+.086*highWave,.219+.026*highWave);
+      direction.set(.33+(.19+.40*highWave)*sway,.88-.07*sway,.34).normalize();
+    }
     goalQ.setFromUnitVectors(axis,direction);
     front.set(.10+.10*sway,0,1).projectOnPlane(direction).normalize();
     turned.copy(restNormal).applyQuaternion(goalQ);
     const roll=Math.atan2(cross.crossVectors(turned,front).dot(direction),turned.dot(front));
     goalQ.premultiply(twist.setFromAxisAngle(direction,roll));
-    palmQ.identity().slerp(goalQ,rise);
+    palmQ.identity().slerp(goalQ,Math.max(rise,kiss));
+    if(kiss>0 && rig.greetingSleeve) {
+      kissTip.copy(rig.greetingSleeve.contactTip).sub(arm.handOffset);
+      lifted.sub(palmOffset.copy(kissTip).applyQuaternion(palmQ));
+    }
+    goal.lerpVectors(neutral,lifted,Math.max(rise,kiss));
+    if(kiss===0)goal.z+=.031*Math.sin(Math.PI*rise);
     arm.setPalm(goal,palmQ);
     arm.palmModel(actual).toArray(status.palm);
     rig.greetingSleeve?.setBlend(cover);
@@ -5414,6 +5476,10 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
   const eyeCenter = new THREE.Vector3(-0.092, 0.018, 0.220);
   const gazeSolver = createFishGaze(THREE);
   const greeting = createFishGreeting(THREE, rig);
+  const waveKeys = new Float32Array(4), kissKeys = new Float32Array(5);
+  const danceKeys = new Float32Array(6);
+  let viewerAttention=0, viewerPitch=0, viewerYaw=0;
+  const viewerDirection=new THREE.Vector3(), viewerRotation=new THREE.Quaternion();
 
   // Pose storage: working target and smoothed output
   const currentPose = {
@@ -5431,7 +5497,9 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
     hairLag: 0,
     greetingCover: 0,
     greetingRise: 0,
-    greetingSway: 0
+    greetingSway: 0,
+    kissReach: 0,
+    kissRelease: 0
   };
 
   const actionTargetPose = {
@@ -5449,7 +5517,9 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
     hairLag: 0,
     greetingCover: 0,
     greetingRise: 0,
-    greetingSway: 0
+    greetingSway: 0,
+    kissReach: 0,
+    kissRelease: 0
   };
 
   const actionInterpFrom = {
@@ -5467,7 +5537,9 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
     hairLag: 0,
     greetingCover: 0,
     greetingRise: 0,
-    greetingSway: 0
+    greetingSway: 0,
+    kissReach: 0,
+    kissRelease: 0
   };
 
   function resetPoseObj(target) {
@@ -5486,6 +5558,8 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
     target.greetingCover = 0;
     target.greetingRise = 0;
     target.greetingSway = 0;
+    target.kissReach = 0;
+    target.kissRelease = 0;
   }
 
   // Smooth easing helper
@@ -5665,6 +5739,66 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
       }
     },
     wave: {duration:fishGreetingSeconds,eyeWindow:[1.345,1.58],eval:evaluateFishGreeting},
+    jumpWave: {
+      duration:1.15,
+      eyeWindow:[.33,.68],
+      eval(t,pose,face) {
+        evaluateFishTailJump(t,pose,face);
+        sampleFishViewerGesture(fishViewerGestures.jumpWave,t,waveKeys);
+        const [rise,sway,smile,wink]=waveKeys;
+        pose.greetingRise=rise;
+        pose.greetingSway=sway*rise;
+        pose.greetingCover=smoothstep(0,.15,t)*(1-smoothstep(1.02,1.15,t));
+        pose.headRoll+=.045*rise;
+        face.smile=Math.max(face.smile,.75*smile);
+        face.blinkLeft=.65*wink;
+      }
+    },
+    airKiss: {
+      duration:1.65,
+      eyeWindow:[.30,1.05],
+      eval(t,pose,face) {
+        sampleFishViewerGesture(fishViewerGestures.airKiss,t,kissKeys);
+        const [reach,release,purse,smile,wink]=kissKeys;
+        pose.kissReach=reach;
+        pose.kissRelease=release;
+        pose.greetingCover=smoothstep(0,.17,t)*(1-smoothstep(1.48,1.65,t));
+        pose.headRoll+=.072*reach-.042*release;
+        pose.chestPitch+=.026*reach-.035*release;
+        pose.tailAngle+=.08*release;
+        face.lipPurse=.84*purse;
+        face.smile=.69*smile;
+        face.blinkRight=.92*wink;
+      }
+    },
+    pleased: {
+      duration:1.9,
+      eval(t,pose,face) {
+        const swell=smoothstep(.12,.48,t)*(1-smoothstep(1.19,1.83,t));
+        const sway=Math.sin((t-.32)*7)*swell;
+        pose.headRoll+=.095*swell+.024*sway;
+        pose.chestRoll+=.037*sway;
+        pose.tailAngle+=.15*sway;
+        face.lipPurse=.34*swell*(1-smoothstep(.62,.91,t));
+        face.smile=.55*swell*smoothstep(.68,1.02,t);
+      }
+    },
+    dance: {
+      duration:2.40,
+      eval(t,pose,face) {
+        sampleFishViewerGesture(fishViewerGestures.dance,t,danceKeys);
+        const [dip,bodyRoll,headRoll,tail,smile,arm]=danceKeys;
+        pose.hipY+=dip;
+        pose.chestRoll+=bodyRoll;
+        pose.headRoll+=headRoll;
+        pose.tailAngle+=tail;
+        pose.hairLag-=.36*bodyRoll;
+        pose.greetingRise=.44*arm;
+        pose.greetingSway=.32*arm+bodyRoll;
+        pose.greetingCover=smoothstep(0,.18,t)*(1-smoothstep(2.20,2.40,t));
+        face.smile=.66*smile;
+      }
+    },
     wag: {
       duration: 1.5,
       eval(t, pose, f, g) {
@@ -5836,6 +5970,7 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
     focus = null;
     focusWeight = 1;
     headAttention = followYaw = followPitch = 0;
+    viewerAttention = viewerPitch = viewerYaw = 0;
     breatheGain = 1;
     lastTimeMs = -1;
     visitTimeMs = -1;
@@ -5880,10 +6015,11 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
     interactionLook = lookAt;
   }
 
-  function setAttention(point, weight=1, trackHead=0) {
+  function setAttention(point, weight=1, trackHead=0, viewer=0) {
     focus = point;
     focusWeight = weight;
     headAttention = trackHead;
+    viewerAttention = viewer;
   }
 
   function setFace(blink, smile) {
@@ -5992,8 +6128,24 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
 
     // Push pose to mascot rig
     if (rig && typeof rig.setPose === 'function') {
+      if (camera && rig.head && (viewerAttention>0 || Math.abs(viewerPitch)+Math.abs(viewerYaw)>.001)) {
+        rig.head.parent.getWorldQuaternion(viewerRotation).invert();
+        rig.head.localToWorld(viewerDirection.copy(eyeCenter));
+        viewerDirection.negate().add(camera.position).applyQuaternion(viewerRotation);
+        const bearing=Math.atan2(viewerDirection.x,viewerDirection.z);
+        const elevation=Math.atan2(viewerDirection.y,Math.hypot(viewerDirection.x,viewerDirection.z));
+        const weight=viewerAttention*(1-smoothstep(.64,1.22,Math.abs(bearing)));
+        const yaw=clamp(bearing-currentPose.headYaw,-.40,.40)*weight;
+        const pitch=clamp(-elevation-currentPose.headPitch,-.52,.27)*weight;
+        const blend=-Math.expm1(-11*dt);
+        viewerYaw+=(yaw-viewerYaw)*blend;
+        viewerPitch+=(pitch-viewerPitch)*blend;
+        currentPose.headYaw+=viewerYaw;
+        currentPose.headPitch+=viewerPitch;
+      }
       rig.setPose(currentPose, locomotion);
-      greeting?.apply(currentPose.greetingRise, currentPose.greetingSway, currentPose.greetingCover);
+      greeting?.apply(currentPose.greetingRise, currentPose.greetingSway, currentPose.greetingCover,
+        currentPose.kissReach,currentPose.kissRelease,activeActionName==='jumpWave'?currentPose.greetingRise:0);
     }
 
     // Compute focus from the midpoint between the eyes in the posed head.
@@ -6114,6 +6266,7 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
         targetX: Number(gazeSolver.target.x.toFixed(3)),
         targetY: Number(gazeSolver.target.y.toFixed(3)),
         forward: Number(_vDirLocal.z.toFixed(3)),
+        viewer: viewerAttention,
         frameTime: lastTimeMs,
         followYaw, followPitch
       },
@@ -6228,13 +6381,15 @@ function createFishPivot(x,z,yaw,rotation,seconds,length=Math.max(0.025,Math.abs
 }
 
 function createFishVisitRoutes(stageX,stageZ,yaw) {
-  const arrival=createFishRoute([[3.43,-0.24],[2.56,-0.32],
-    [stageX-Math.sin(yaw)*0.80,stageZ-Math.cos(yaw)*0.80],[stageX,stageZ]]);
-  const departure=createFishRoute([[stageX,stageZ],[1.84,-0.44],[2.58,-0.91],[3.43,-0.50]]);
+  // Both passes go around the back of the small screen and its feet.
+  // Keep the final arrival tangent pointed toward the audience.
+  const arrival=createFishRoute([[3.43,-0.24],[3.15,-0.266],
+    [stageX-Math.sin(yaw)*2.65,stageZ-Math.cos(yaw)*2.65],[stageX,stageZ]]);
+  const departure=createFishRoute([[stageX,stageZ],[1.16,-1.87],[3.02,-1.61],[3.43,-0.50]]);
   const staging=[3.23,4.25];
   // The short handles at the existing endpoints match the original tangent.
-  const corridorIn=createFishRoute([staging,[3.32,2.15],[3.55,-0.24+0.12*0.08/0.87],[3.43,-0.24]]);
-  const corridorOut=createFishRoute([[3.43,-0.50],[3.534,-0.50+0.104*0.41/0.85],[3.32,2.25],staging]);
+  const corridorIn=createFishRoute([staging,[3.21,2.15],[3.55,-0.229],[3.43,-0.24]]);
+  const corridorOut=createFishRoute([[3.43,-0.50],[3.50,-0.31],[3.32,2.25],staging]);
   const exitYaw=departure.sample(0,{}).yaw;
   const turning=createFishPivot(stageX,stageZ,yaw,Math.PI*2,3.8);
   const exitTurn=createFishPivot(stageX,stageZ,yaw,Math.atan2(Math.sin(exitYaw-yaw),Math.cos(exitYaw-yaw)),1.34,0.22);
@@ -6245,10 +6400,10 @@ function createFishVisitRoutes(stageX,stageZ,yaw) {
   const leavePace=[[0,0],[0.031,0.010],[0.073,0.038],[0.19,0.73],
     [0.35,1.01],[0.74,0.99],[0.90,0.60],[1,0]];
   return {
-    arrival:{route:arrival,pace:createFishPace(arrival,4.65,pace)},
+    arrival:{route:arrival,pace:createFishPace(arrival,5.35,pace)},
     turning,
     exitTurn:{...exitTurn,stepDistance:0.0275},
-    departure:{route:departure,pace:createFishPace(departure,4.75,pace)},
+    departure:{route:departure,pace:createFishPace(departure,5.40,pace)},
     corridorIn:{route:corridorIn,pace:createFishPace(corridorIn,4.7,approachPace),stepDistance:0.112,corridor:true},
     corridorOut:{route:corridorOut,pace:createFishPace(corridorOut,4.95,leavePace),stepDistance:0.112,corridor:true},
   };
@@ -6272,24 +6427,28 @@ function planFishVisit(totalMs, seed, actionCount, reserve=39000) {
     [order[i],order[j]]=[order[j],order[i]];
   }
   const peek=random()<0.46;
-  const waveIndex=random()<0.57 ? Math.floor(random()*(actionCount+1)) : null;
+  const waveIndex=random()<0.70 ? Math.floor(random()*(actionCount+1)) : null;
   const touchArt=random()<0.58;
   const shy=random()<0.42;
   const compact=totalMs>=82000 && random()<0.34;
   const stretch=random()<0.39;
+  const greeting=Math.floor(random()*4);
   if (compact) {
     // Reserve both full entry and exit corridors, plus enough time for the
     // longest two actions, optional greeting and a final pause.
-    const reserveMs=40000;
+    const reserveMs=41500;
     const first=totalMs*.50;
     const last=Math.min(totalMs*.62,totalMs-reserveMs-500);
     const delay=first+(last-first)*arrivalDraw;
     const selected=order.slice(0,2);
-    return {triggerMs:totalMs-delay,reserveMs,order:selected,peek,shy,stretch,compact,
-      waveIndex:waveIndex===null ? null : Math.round(waveIndex*selected.length/actionCount),touchArt:false};
+    return {triggerMs:totalMs-delay,reserveMs,order:selected,peek,shy,stretch,compact,greeting,
+      waveIndex:waveIndex===null ? null : Math.min(1,Math.floor(waveIndex*selected.length/actionCount)),touchArt:false};
   }
   const delay=(.06+.83*arrivalDraw)*(totalMs-reserve);
-  return {triggerMs:totalMs-delay,reserveMs:reserve,order,peek,waveIndex,touchArt,shy,stretch,compact};
+  const count=Math.min(actionCount,(totalMs<63000?3:4)+Math.floor(random()*3));
+  return {triggerMs:totalMs-delay,reserveMs:reserve,order:order.slice(0,count),peek,
+    waveIndex:waveIndex===null ? null : Math.min(count-1,Math.floor(waveIndex*count/actionCount)),
+    greeting,touchArt,shy,stretch,compact};
 }
 
 </script>
@@ -8999,6 +9158,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
 </script>
 
 <div id="webgl-container"></div>
+<span id="fish-kiss-heart" aria-hidden="true" hidden>♥</span>
 <div id="vignette"></div>
 <div id="curtain"></div>
 <div id="tea-wash" aria-hidden="true">
@@ -12119,6 +12279,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
   function startOutro() {
     if (outroStarted) return;
     outroStarted = true;
+    document.getElementById('fish-kiss-heart').hidden=true;
     fishVisitor?.beginOutro();
     outroElapsed = 0;
     cancelIntro();
@@ -12899,8 +13060,15 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     ];
     const shyAct={phase:'shy',name:'shySway',seconds:2.07};
     const stretchAct={phase:'stretch',name:'stretch',seconds:fishStretchSeconds+0.16};
-    const greetingAct={phase:'wave',name:'wave',seconds:fishGreetingSeconds+0.18};
-    const briefActs = acts.filter(action => action.phase !== 'art');
+    const greetings = [
+      {phase:'wave',name:'wave',seconds:fishGreetingSeconds+0.56,viewer:true},
+      {phase:'jumpWave',name:'jumpWave',seconds:1.76,viewer:true},
+      {phase:'airKiss',name:'airKiss',seconds:2.24,viewer:true},
+      {phase:'dance',name:'dance',seconds:2.98,viewer:true}
+    ];
+    const pleasedAct={phase:'pleased',name:'pleased',seconds:2.08};
+    const visitActs=[...acts,pleasedAct];
+    const briefActs = visitActs.filter(action => action.phase !== 'art');
     const anchor = new THREE.Group();
     anchor.userData.fishDynamic = 'fish';
     scene.add(anchor);
@@ -12921,6 +13089,9 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     VIEWS.fishSmallScroll=smallScroll.view;
 
     let model = null, gesture = null, failure = null, loading = false, sip = null, teaResult = null;
+    let actorRig;
+    const kissHeart=document.getElementById('fish-kiss-heart');
+    const kissOrigin=new THREE.Vector3(), kissPoint=new THREE.Vector3();
     let active = false, scheduled = null, actionOrder = acts;
     let actionLimit = acts.length, wallSecondsPerMotion = 1;
     let elapsed = 0, phase = 'away', previousPhase = null, returnView = 'front';
@@ -12956,6 +13127,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
         }
         const scale=0.74/asset.height;
         model=asset.root;
+        actorRig=asset.bodyRig;
         gesture=asset.gesture;
         model.scale.setScalar(scale);
         model.position.y=-asset.soleY*scale;
@@ -13138,7 +13310,8 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
 
     function replay() {
       scheduled=null;
-      start([...acts.slice(0,4),touchAct,acts[4],greetingAct,shyAct,stretchAct,...acts.slice(5)],true,true);
+      start([...acts.slice(0,4),touchAct,acts[4],greetings[0],shyAct,stretchAct,
+        ...acts.slice(5),greetings[1],greetings[2],greetings[3],pleasedAct],true,true);
     }
 
     function stop() {
@@ -13147,6 +13320,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       speed=0;
       locomotion=false;
       setFishVisible(false);
+      kissHeart.hidden=true;
       gesture?.reset();
       sip?.clear();
       touch?.clear();
@@ -13168,10 +13342,10 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       stop();
       sessionViewVersion=userCameraVersion;
       if (!appState.hostControlled) seed=Math.floor(Math.random()*0x100000000);
-      const pool=totalMs>=47000 ? acts : briefActs;
+      const pool=totalMs>=47000 ? visitActs : briefActs;
       const allowPeek=totalMs>=52000;
       const allowTouch=totalMs>=63000;
-      scheduled=planFishVisit(totalMs,seed,pool.length,allowTouch ? 59000 : allowPeek ? 50000 : pool===acts ? 45000 : 39000);
+      scheduled=planFishVisit(totalMs,seed,pool.length,allowTouch ? 59000 : allowPeek ? 50000 : pool===visitActs ? 45000 : 39000);
       if (scheduled) {
         scheduled.order=scheduled.order.map(i=>{
           const action=pool[i];
@@ -13179,9 +13353,10 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
           if (scheduled.stretch && action.phase==='glance') return stretchAct;
           return action;
         });
-        if(scheduled.waveIndex!==null)scheduled.order.splice(scheduled.waveIndex,0,greetingAct);
-        scheduled.touchArt=allowTouch&&scheduled.touchArt;
-        if(scheduled.touchArt)scheduled.order.splice(scheduled.order.findIndex(act=>act.phase==='art')+1,0,touchAct);
+        if(scheduled.waveIndex!==null)scheduled.order.splice(scheduled.waveIndex,0,greetings[scheduled.greeting]);
+        const artIndex=scheduled.order.findIndex(act=>act.phase==='art');
+        scheduled.touchArt=allowTouch&&scheduled.touchArt&&artIndex>=0;
+        if(scheduled.touchArt)scheduled.order.splice(artIndex+1,0,touchAct);
         scheduled.peek=allowPeek && scheduled.peek;
         phase='waiting';
         loadModel();
@@ -13244,6 +13419,27 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       if (canFrameVisit()&&activeView.name==='fishVisit') window.shrineView(returnView,true);
     }
 
+    function updateKissHeart(time) {
+      const age=time-.85;
+      const show=age>=0 && age<.66 && !outroStarted;
+      if (!show) {
+        kissHeart.hidden=true;
+        return;
+      }
+      actorRig.head.localToWorld(kissOrigin.copy(actorRig.mouthSocket));
+      kissPoint.copy(kissOrigin).lerp(camera.position,.075+.13*age);
+      kissPoint.y+=.065+.19*age;
+      kissPoint.x+=.11+.16*age;
+      kissPoint.project(camera);
+      const inView=kissPoint.z>=-1 && kissPoint.z<=1 && Math.abs(kissPoint.x)<1 && Math.abs(kissPoint.y)<1;
+      kissHeart.hidden=!inView;
+      if (!inView) return;
+      const x=(kissPoint.x*.5+.5)*lastW, y=(.5-kissPoint.y*.5)*lastH;
+      const opacity=smooth01(age,0,.10)*(1-smooth01(age,.35,.66));
+      kissHeart.style.opacity=opacity.toFixed(3);
+      kissHeart.style.transform=`translate(${x}px,${y}px) translate(-50%,-50%) scale(${.57+age*.62})`;
+    }
+
     function departureReserve() {
       const needsCorridor = activeView.name==='fishSmallScroll' || intersectsView(exitPoint.x,exitPoint.z);
       return directExitSeconds + (needsCorridor ? motions.corridorOut.pace.seconds : 0);
@@ -13282,7 +13478,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       focusOn(null,1,'camera');
       peekWeight=0;
       edgeHold=false;
-      let sipTime = -1,touchTime=-1,headAttention=0;
+      let sipTime=-1,touchTime=-1,kissTime=-1,headAttention=0,viewerAttention=0;
       touchSegment=null;
 
       const corridorEnd=approachCorridor ? motions.corridorIn.pace.seconds : 0;
@@ -13368,6 +13564,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
             for(const leg of touchVisit){
               if(time>=leg.seconds){time-=leg.seconds;continue;}
               touchSegment=leg.label;
+              if (leg.label==='walkBack') leaveScrollCloseup();
               if(leg.motion)walk(leg.motion,time);
               else {
                 place({x:smallScroll.footPoint.x,z:smallScroll.footPoint.z,yaw:smallScroll.facing});
@@ -13389,6 +13586,12 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
               cupRimFocus.set(0,0.048,0).applyMatrix4(teaSet.cup.matrixWorld);
               focusOn(cupRimFocus,teaPose.cupAttention,'cup');
             }
+          } else if(action.viewer) {
+            const time=elapsed-cue;
+            viewerAttention=smoother01(time,0,.32)*(1-smoother01(time,action.seconds-.28,action.seconds));
+            focusOn(null,1,'viewer');
+            if(time>=.32 && (time-dt<.32 || previousPhase!==phase))gesture.play(action.name);
+            if(phase==='airKiss')kissTime=time-.32;
           } else if(previousPhase!==phase) gesture.play(action.name);
         } else {
           const turnTime=exitTurnSeconds;
@@ -13442,8 +13645,12 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       // The motion phase can change the camera goal. Sample that view
       // before solving the gaze for the pose that this frame will draw.
       updateCamera(dt);
-      gesture.setAttention(focus,focusWeight,headAttention);
+      gesture.setAttention(focus,focusWeight,headAttention,viewerAttention);
       gesture.update(frameTimestamp,camera);
+      if(kissTime>=0 || !kissHeart.hidden) {
+        camera.updateMatrixWorld();
+        updateKissHeart(kissTime);
+      }
       if(sipTime>=0) {
         teaResult=sip.sample(sipTime);
         teaSet.place(teaResult);
@@ -13469,7 +13676,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
           rimError:teaResult.rimError,fill:teaResult.fill,fingerCurl:teaResult.fingerCurl,fingers:teaResult.fingers?{...teaResult.fingers}:null,position:teaSet.cup.position.toArray()} : null,
         touch:phase==='touch' ? {segment:touchSegment,...touchResult} : null,
         plannedTouch:scheduled ? scheduled.touchArt : null,
-        greeting:phase==='wave'  ? gesture?.status().greeting ?? null : null,
+        greeting:greetings.some(action=>action.phase===phase) ? gesture?.status().greeting ?? null : null,
         plannedWave:scheduled ? scheduled.waveIndex!==null : null,
         expression:gesture ? { ...gesture.expression } : null,
         attention:anchor.visible ? {subject:attention,weight:focusWeight,point:focus?.toArray() ?? null,gaze:gesture.status().gaze} : null,
