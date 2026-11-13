@@ -5709,6 +5709,37 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
     tailJump: {duration:1.15,eval:evaluateFishTailJump},
     shySway: {duration:1.90,eyeWindow:[0.78,1.01],eval:evaluateFishShySway},
     stretch: {duration:fishStretchSeconds,eyeWindow:[0.44,1.57],eval:evaluateFishStretch},
+    tailCuriosity: {
+      duration: 2.1,
+      eval(t, pose, f, g) {
+        const notice=smoothstep(0,.32,t)*(1-smoothstep(1.52,2.1,t));
+        const wag=Math.sin(t*10.5)*notice;
+        pose.headYaw-=.30*notice;
+        pose.headPitch+=.16*notice;
+        pose.chestRoll-=.10*notice;
+        pose.tailAngle+=.14*wag;
+        pose.hairLag+=.07*notice;
+        g.x-=.60*notice;
+        g.y+=.12*notice;
+        f.smile+=.26*notice;
+      }
+    },
+    lookUp: {
+      duration: 1.85,
+      eval(t, pose, f, g) {
+        const rise=smoothstep(.20,.69,t)*(1-smoothstep(1.22,1.82,t));
+        const eyeLead=smoothstep(.08,.42,t)*(1-smoothstep(1.04,1.53,t));
+        const search=smoothstep(.46,.93,t)*(1-smoothstep(1.20,1.78,t));
+        pose.chestPitch-=.028*rise;
+        pose.headPitch-=.096*rise;
+        pose.headYaw+=.075*search;
+        pose.headRoll+=.029*search;
+        pose.tailAngle-=.039*rise;
+        g.x+=.11*search;
+        g.y-=.07*eyeLead;
+        f.smile+=.12*rise;
+      }
+    },
     glance: {
       duration: 1.4,
       eval(t, pose, f, g) {
@@ -6433,6 +6464,7 @@ function planFishVisit(totalMs, seed, actionCount, reserve=39000) {
   const compact=totalMs>=82000 && random()<0.34;
   const stretch=random()<0.39;
   const greeting=Math.floor(random()*4);
+  const tableVisit=totalMs>=90000 && random()<0.38;
   if (compact) {
     // Reserve both full entry and exit corridors, plus enough time for the
     // longest two actions, optional greeting and a final pause.
@@ -6446,7 +6478,7 @@ function planFishVisit(totalMs, seed, actionCount, reserve=39000) {
   }
   const delay=(.06+.83*arrivalDraw)*(totalMs-reserve);
   const count=Math.min(actionCount,(totalMs<63000?3:4)+Math.floor(random()*3));
-  return {triggerMs:totalMs-delay,reserveMs:reserve,order:order.slice(0,count),peek,
+  return {triggerMs:totalMs-delay,reserveMs:reserve,order:order.slice(0,count),peek,tableVisit,
     waveIndex:waveIndex===null ? null : Math.min(count-1,Math.floor(waveIndex*count/actionCount)),
     greeting,touchArt,shy,stretch,compact};
 }
@@ -6917,6 +6949,149 @@ function createFishSmallScrollVisit(prop,stageX,stageZ,stageYaw) {
     {label:'returnToStage',seconds:.86,motion:createFishPivot(stageX,stageZ,backEnd,turn(backEnd,stageYaw),.86)}
   ];
 }
+
+function createFishTableSteps(THREE, scene, wood, floorY, tableY, tableEdgeZ) {
+  const steps = new THREE.Group();
+  const x=.65, width=.34, depth=.205, count=7;
+  const rise=(tableY-floorY)/(count+1);
+  const treads=[];
+  for (let i=0;i<count;i++) {
+    const front=tableEdgeZ+(count-i)*depth;
+    const y=floorY+(i+1)*rise;
+    const z=front-depth/2;
+    const tread=new THREE.Mesh(new THREE.BoxGeometry(width,y-floorY,depth),wood);
+    tread.position.set(x,(y+floorY)/2,z);
+    tread.castShadow=tread.receiveShadow=true;
+    steps.add(tread);
+    treads.push({x,y,z,front,width,depth});
+  }
+  scene.add(steps);
+  return treads;
+}
+
+function createFishTableVisit(stage, steps, table) {
+  const first=steps[0];
+  const base={x:first.x,y:stage.y,z:first.front+.22,yaw:Math.PI};
+  const upperLanding={...table,z:steps.at(-1).front-.220};
+  const stairs=[base,...steps.map(step=>({x:step.x,y:step.y,z:step.front+.025,yaw:base.yaw})),upperLanding];
+  const pivot=(point,from,to,seconds)=>({
+    motion:createFishPivot(point.x,point.z,from,Math.atan2(Math.sin(to-from),Math.cos(to-from)),seconds),
+    y:point.y,seconds
+  });
+  // The floor path goes around the cup stand and meets the stairs from the front.
+  const approach=createFishRoute([[stage.x,stage.z],[1.96,.005],[2.03,base.z+.14],[base.x,base.z]]);
+  const firstYaw=approach.sample(0,{}).yaw;
+  const lastYaw=approach.sample(approach.length,{}).yaw;
+  const walk=(route,seconds,y=stage.y)=>({
+    motion:{route,pace:createFishPace(route,seconds,[[0,0],[.25,1],[.72,1],[1,0]]),stepDistance:.089},
+    y,seconds
+  });
+  const walkStraight=(from,to,seconds)=>walk({
+    length:Math.abs(to.z-from.z),sample(distance,out){
+      out.x=from.x;out.z=from.z+Math.sign(to.z-from.z)*distance;out.yaw=from.yaw;return out;
+    }
+  },seconds,from.y);
+  const stepsUp=stairs.slice(1).map((to,i)=>({
+    name:'climb',from:stairs[i],to,seconds:.86,lead:i%2===0?'right':'left'
+  }));
+  const look={...table,yaw:0};
+  const upperExit={...look,z:steps.at(-1).front-steps.at(-1).depth-.080};
+  const floorLanding={...base,yaw:look.yaw};
+  const floorExit={...floorLanding,z:floorLanding.z+.27};
+  const clearStairs=createFishRoute([[floorExit.x,floorExit.z],[1.10,floorExit.z+.07],[1.89,1.96],[1.92,1.35]]);
+  const returnRoute=createFishRoute([[1.92,1.35],[1.945,.84],[1.93,-.085],[stage.x,stage.z]]);
+  const returnYaw=clearStairs.sample(0,{}).yaw;
+  const returnEndYaw=returnRoute.sample(returnRoute.length,{}).yaw;
+  const descent=[upperExit,...steps.slice().reverse().map(step=>({
+    x:step.x,y:step.y,z:step.front-.035,yaw:look.yaw
+  })),floorLanding];
+  const stepsDown=descent.slice(1).map((to,i)=>({
+    name:'descend',from:descent[i],to,seconds:.92,lead:i%2===0?'left':'right'
+  }));
+  return [
+    {name:'approach', ...pivot(stage,stage.yaw,firstYaw,.68)},
+    {name:'approach', ...walk(approach,2.20)},
+    {name:'approach', ...pivot(base,lastYaw,base.yaw,.70)},
+    ...stepsUp,
+    {name:'climb', ...walkStraight(upperLanding,table,.58)},
+    {name:'tableTurn', ...pivot(table,table.yaw,look.yaw,1.08)},
+    {name:'lookAround', point:look, seconds:1.72},
+    {name:'descend', ...walkStraight(look,upperExit,.52)},
+    ...stepsDown,
+    {name:'return', ...walkStraight(floorLanding,floorExit,.66)},
+    {name:'return', ...pivot(floorExit,floorExit.yaw,returnYaw,.65)},
+    {name:'return', ...walk(clearStairs,1.48)},
+    {name:'return', ...walk(returnRoute,1.86)},
+    {name:'return', ...pivot(stage,returnEndYaw,stage.yaw,.70)}
+  ];
+}
+
+function sampleFishStair(time, leg, scale, point, gait, pose) {
+  const {from,to,lead}=leg;
+  const descending=leg.name==='descend';
+  const u=time/leg.seconds;
+  const ease=(start,end)=>fishScrollTouchEase((u-start)/(end-start));
+  const shift=descending ? ease(.43,.93) : ease(.15,.66);
+  // Move the pelvis between the support and swing feet instead of making
+  // the leading leg reach all the way across a tread from a fixed body.
+  const travel=descending ? ease(.08,.76) : ease(.13,.48)*.5+ease(.51,.93)*.5;
+  point.x=from.x;
+  point.y=from.y+(to.y-from.y)*shift;
+  point.z=from.z+(to.z-from.z)*travel;
+  point.yaw=from.yaw;
+
+  // One foot plants on the next tread before the other leaves its support.
+  // Lift before crossing the lip uphill. Downhill, clear the front edge
+  // before lowering the shoe and transferring weight to the lower tread.
+  for (const side of ['left','right']) {
+    const leading=side===lead;
+    const start=leading ? .03 : .51;
+    const end=leading ? .48 : .98;
+    const travel=ease(start+.085,end-.085);
+    const lift=ease(start,start+.085);
+    const land=ease(end-.08,end);
+    const rise=to.y-from.y;
+    const y=from.y+rise*(descending ? land : lift)+(descending ? .029 : .038)*lift*(1-land);
+    const z=from.z+(to.z-from.z)*travel;
+    gait[side+'X']=0;
+    gait[side+'Y']=(y-point.y)/scale;
+    gait[side+'Z']=(descending ? z-point.z : point.z-z)/scale;
+    gait[side+'Pitch']=(descending ? .09 : -.17)*lift*(1-land);
+    gait[side+'Yaw']=0;
+    gait[side+'Planted']=u<=start || u>=end;
+  }
+  gait.supportX=0;
+  gait.supportZ=0;
+  const effort=ease(0,.24)*(1-ease(.72,1));
+  const transfer=ease(.23,.43)*(1-ease(.60,.96));
+  pose.hipY=(descending ? -.032 : -.052)*transfer;
+  pose.chestPitch=(descending ? .075 : .24)*effort;
+  pose.headPitch=(descending ? .11 : -.14)*effort;
+  pose.hairLag=-.046*effort;
+  pose.tailAngle=.047*effort;
+  pose.gazeRelaxation=.28*effort;
+  pose.idleSuppress=.7*effort;
+}
+
+function createFishFloorDash(x,z,yaw) {
+  const route=createFishRoute([[x,z],[x+.16,z+.032],[x+.42,z+.020],[x+.53,z+.013]]);
+  const back={length:route.length,sample(distance,out){
+    route.sample(route.length-distance,out);
+    out.yaw+=Math.PI;
+    return out;
+  }};
+  const startYaw=route.sample(0,{}).yaw;
+  const end=route.sample(route.length,{});
+  const faceStage=Math.atan2(Math.sin(yaw-startYaw-Math.PI),Math.cos(yaw-startYaw-Math.PI));
+  return [
+    createFishPivot(x,z,yaw,startYaw-yaw,.47),
+    {route,pace:createFishPace(route,.75,[[0,0],[.34,1.42],[.63,1.38],[1,0]]),stepDistance:.11},
+    createFishPivot(end.x,end.z,end.yaw,Math.PI,.64),
+    {route:back,pace:createFishPace(back,1.13,[[0,0],[.24,1],[.75,1],[1,0]]),stepDistance:.083},
+    createFishPivot(x,z,startYaw+Math.PI,faceStage,.64)
+  ];
+}
+
 
 </script>
 <script>
@@ -12601,7 +12776,8 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       activeView.fov += (goal.fov - activeView.fov) * k;
     }
 
-    const staged = (activeView.name === 'fishVisit' || activeView.name === 'fishSmallScroll') && !outroStarted;
+    const staged = (activeView.name === 'fishVisit' || activeView.name === 'fishSmallScroll' ||
+      activeView.name === 'fishTable') && !outroStarted;
     if (staged) {
       if (activeView.pos.distanceToSquared(goal.pos) < 0.00000004) activeView.pos.copy(goal.pos);
       if (activeView.target.distanceToSquared(goal.target) < 0.00000004) activeView.target.copy(goal.target);
@@ -12937,7 +13113,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
   }
 
   function createFishTeaSet(stageX, stageZ, yaw) {
-    const height=0.288, forward=0.343, across=0.089;
+    const height=0.288, forward=0.472, across=0.089;
     const c=Math.cos(yaw),s=Math.sin(yaw);
     const x=stageX+across*c+forward*s, z=stageZ-across*s+forward*c;
     const stand=new THREE.Group();
@@ -13018,10 +13194,21 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     const teaSet = createFishTeaSet(stageX,stageZ,stageYaw);
     const smallScroll=createFishSmallScroll(THREE,scene,floorY,tableWoodMat,textures.hangingScroll);
     const touchVisit=createFishSmallScrollVisit(smallScroll,stageX,stageZ,stageYaw);
+    const tableEdgeZ=tableSlab.position.z+tableSlab.geometry.parameters.depth/2;
+    const steps=createFishTableSteps(THREE,scene,tableWoodMat,floorY,tableSurfaceY,tableEdgeZ);
+    const stage={x:stageX,z:stageZ,y:floorY,yaw:stageYaw};
+    const table={x:steps[0].x,y:tableSurfaceY,z:tableEdgeZ-.21,yaw:Math.PI};
+    const tableVisit=createFishTableVisit(stage,steps,table);
+    const tableAct={phase:'table',seconds:tableVisit.reduce((sum,leg)=>sum+leg.seconds,0)};
+    const tablePose={}, tablePoint={}, stairGait={};
+    const tableFocus=new THREE.Vector3();
+    const dash=createFishFloorDash(stageX,stageZ,stageYaw);
+    const dashAct={phase:'dash',seconds:dash.reduce((sum,leg)=>sum+leg.pace.seconds,0)};
+    let tableSegment=null;
     const touchPose={};
     let touch=null,touchResult=null,touchSegment=null;
     const touchAct={phase:'touch',seconds:fishSmallScrollVisitSeconds};
-    const stepToTea = 0.104, stepSeconds = 0.94, sipSeconds = 4.13;
+    const stepToTea = 0.233, stepSeconds = 1.16, sipSeconds = 4.13;
     const teaPose = {};
     const cupRimFocus = new THREE.Vector3();
     const scrollPose = {};
@@ -13064,7 +13251,10 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       {phase:'dance',name:'dance',seconds:2.98,viewer:true}
     ];
     const pleasedAct={phase:'pleased',name:'pleased',seconds:2.08};
-    const visitActs=[...acts,pleasedAct];
+    const chaseTail=createFishPivot(stageX,stageZ,stageYaw,-2*Math.PI,2.55);
+    const curiousAct={phase:'tailCuriosity',name:'tailCuriosity',seconds:chaseTail.pace.seconds};
+    const lookUpAct={phase:'lookUp',name:'lookUp',seconds:1.98};
+    const visitActs=[...acts,pleasedAct,curiousAct,lookUpAct,dashAct];
     const briefActs = visitActs.filter(action => action.phase !== 'art');
     const anchor = new THREE.Group();
     anchor.userData.fishDynamic = 'fish';
@@ -13084,6 +13274,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     setFishVisible(false);
     VIEWS.fishVisit = {pos:camPos.clone(),target:camTarget.clone(),fov:camFov};
     VIEWS.fishSmallScroll=smallScroll.view;
+    VIEWS.fishTable={pos:new THREE.Vector3(2.72,1.53,3.55),target:new THREE.Vector3(.86,.33,.93),fov:44};
 
     let model = null, gesture = null, failure = null, loading = false, sip = null, teaResult = null;
     let actorRig;
@@ -13129,6 +13320,9 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
         feetRest=asset.feetRest;
         for(const motion of Object.values(motions)) bindGait(motion);
         for(const leg of touchVisit)if(leg.motion)bindGait(leg.motion);
+        for(const leg of tableVisit)if(leg.motion)bindGait(leg.motion);
+        for(const motion of dash)bindGait(motion);
+        bindGait(chaseTail);
         anchor.add(model);
         sip=createFishSip(THREE,model,asset.bodyRig,teaSet.restPosition);
         touch=createFishScrollTouch(THREE,model,asset.bodyRig,smallScroll);
@@ -13144,8 +13338,8 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       return automaticView && userCameraVersion===visitViewVersion && !dragging;
     }
 
-    function leaveScrollCloseup() {
-      if (activeView.name!=='fishSmallScroll') return;
+    function leaveInteractionView() {
+      if (activeView.name!=='fishSmallScroll' && activeView.name!=='fishTable') return;
       const orbitYaw=yaw, orbitPitch=pitch;
       setView('fishVisit',true);
       yaw=orbitYaw;
@@ -13255,11 +13449,14 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       } else if(activeView.name==='fishSmallScroll') {
         const portrait=2*Math.atan(Math.tan(43*Math.PI/360)*1.23/aspect)*180/Math.PI;
         goal.fov=aspect<1.23 ? Math.min(84,portrait) : 43;
+      } else if(activeView.name==='fishTable') {
+        const portrait=2*Math.atan(Math.tan(44*Math.PI/360)*1.45/aspect)*180/Math.PI;
+        goal.fov=aspect<1.45 ? Math.min(84,portrait) : 44;
       }
     }
 
-    function place(sample) {
-      anchor.position.set(sample.x,floorY,sample.z);
+    function place(sample, y=floorY) {
+      anchor.position.set(sample.x,y,sample.z);
       anchor.rotation.y=sample.yaw;
     }
 
@@ -13294,7 +13491,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       teaSet.rest();
       teaResult=null;
       if (canFrameVisit()) {
-        if(activeView.name!=='fishVisit'&&activeView.name!=='fishSmallScroll') returnView=activeView.name;
+        if(!['fishVisit','fishSmallScroll','fishTable'].includes(activeView.name)) returnView=activeView.name;
         setCameraFov();
         window.shrineView('fishVisit',true);
         beginVisitCamera();
@@ -13302,8 +13499,12 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       loadModel();
     }
 
-    function replay() {
+    function replay(showNewMoves=false) {
       scheduled=null;
+      if (showNewMoves) {
+        start([dashAct,curiousAct,lookUpAct,tableAct],true,true);
+        return;
+      }
       start([...acts.slice(0,4),touchAct,acts[4],greetings[0],shyAct,stretchAct,
         ...acts.slice(5),greetings[1],greetings[2],greetings[3],pleasedAct],true,true);
     }
@@ -13320,7 +13521,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       touch?.clear();
       touchResult=null;
       touchSegment=null;
-      leaveScrollCloseup();
+      leaveInteractionView();
       if (teaResult?.held) teaSet.rest();
       teaResult=null;
       phase='away';
@@ -13347,6 +13548,11 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
           if (scheduled.stretch && action.phase==='glance') return stretchAct;
           return action;
         });
+        if (totalMs<63000) {
+          const firstShort=scheduled.order.findIndex(action=>action.seconds<3.5);
+          if (firstShort>0) scheduled.order.unshift(...scheduled.order.splice(firstShort,1));
+        }
+        if(scheduled.tableVisit) scheduled.order.splice(scheduled.order.length>1 ? scheduled.greeting%2 : 0,0,tableAct);
         if(scheduled.waveIndex!==null)scheduled.order.splice(scheduled.waveIndex,0,greetings[scheduled.greeting]);
         const artIndex=scheduled.order.findIndex(act=>act.phase==='art');
         scheduled.touchArt=allowTouch&&scheduled.touchArt&&artIndex>=0;
@@ -13435,7 +13641,8 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     }
 
     function departureReserve() {
-      const needsCorridor = activeView.name==='fishSmallScroll' || intersectsView(exitPoint.x,exitPoint.z);
+      const needsCorridor = activeView.name==='fishSmallScroll' || activeView.name==='fishTable' ||
+        intersectsView(exitPoint.x,exitPoint.z);
       return directExitSeconds + (needsCorridor ? motions.corridorOut.pace.seconds : 0);
     }
 
@@ -13455,7 +13662,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
         start(order,peek,false,compact);
       }
       if (!active) return;
-      if (outroStarted && previousPhase!=='tea' && previousPhase!=='touch' &&
+      if (outroStarted && previousPhase!=='tea' && previousPhase!=='touch' && previousPhase!=='table' &&
           !intersectsView(anchor.position.x,anchor.position.z)) {
         stop();
         return;
@@ -13477,6 +13684,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       edgeHold=false;
       let sipTime=-1,touchTime=-1,kissTime=-1,headAttention=0,viewerAttention=0;
       touchSegment=null;
+      tableSegment=null;
 
       const corridorEnd=approachCorridor ? motions.corridorIn.pace.seconds : 0;
       const approachEnd=corridorEnd+(edgeApproach?.pace.seconds ?? 0);
@@ -13561,7 +13769,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
             for(const leg of touchVisit){
               if(time>=leg.seconds){time-=leg.seconds;continue;}
               touchSegment=leg.label;
-              if (leg.label==='walkBack') leaveScrollCloseup();
+              if (leg.label==='walkBack') leaveInteractionView();
               if(leg.motion)walk(leg.motion,time);
               else {
                 place({x:smallScroll.footPoint.x,z:smallScroll.footPoint.z,yaw:smallScroll.facing});
@@ -13572,6 +13780,44 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
               if(leg.label==='walkToPaper')focusOn(smallScroll.boardView,.82,'smallScroll');
               break;
             }
+          } else if (phase==='table') {
+            if (previousPhase!=='table' && activeView.name==='fishVisit' && canFrameVisit()) {
+              setView('fishTable',true);
+              setCameraFov();
+              beginVisitCamera();
+            }
+            let time=elapsed-cue;
+            for (const leg of tableVisit) {
+              if (time>=leg.seconds) { time-=leg.seconds; continue; }
+              tableSegment=leg.name;
+              if (leg.motion) {
+                walk(leg.motion,time);
+                anchor.position.y=leg.y;
+              } else if (leg.from) {
+                sampleFishStair(time,leg,feetScale,tablePoint,stairGait,tablePose);
+                place(tablePoint,tablePoint.y);
+                gesture.setLocomotion(stairGait,tablePoint.yaw,0);
+                gesture.setInteraction(tablePose,null);
+                const forward=leg.name==='descend' ? 1 : -1;
+                tableFocus.set(leg.to.x,leg.to.y+.23,leg.to.z+.30*forward);
+                focusOn(tableFocus,.63,'steps');
+              } else {
+                place(leg.point,leg.point.y);
+                if (previousPhase!==phase || time<dt) gesture.play('lookUp');
+                viewerAttention=.28;
+              }
+              break;
+            }
+          } else if (phase==='dash') {
+            let time=elapsed-cue;
+            for (const motion of dash) {
+              if (time>=motion.pace.seconds) { time-=motion.pace.seconds; continue; }
+              walk(motion,time);
+              break;
+            }
+          } else if (phase==='tailCuriosity') {
+            if (previousPhase!==phase) gesture.play(action.name);
+            walk(chaseTail,elapsed-cue,0);
           } else if (phase==='tea') {
             const time=elapsed-cue;
             if(time<stepSeconds) walk(motions.teaForward,time);
@@ -13635,7 +13881,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
           }
         }
       }
-      if(previousPhase==='touch'&&phase!=='touch')leaveScrollCloseup();
+      if ((previousPhase==='touch' || previousPhase==='table') && phase!==previousPhase) leaveInteractionView();
       previousPhase=phase;
       if(sipTime<0)sip.clear();
       if(touchTime<0&&touchResult){touch.clear();touchResult=null;}
@@ -13655,9 +13901,27 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       if(touchTime>=0)touchResult=touch.sample(touchTime);
       shadow.position.x=anchor.position.x;
       shadow.position.z=anchor.position.z;
-      const rise=Math.min(1,model.getSoleLift()*model.scale.y/0.16);
+      const x=anchor.position.x,z=anchor.position.z;
+      const tableClearance=Math.min(tableSlab.geometry.parameters.width/2-Math.abs(x-tableSlab.position.x),
+        tableSlab.geometry.parameters.depth/2-Math.abs(z-tableSlab.position.z));
+      let surfaceY=floorY, supportRadius=Infinity;
+      if (tableSegment) {
+        for (const step of steps) {
+          const clearance=Math.min(step.width/2-Math.abs(x-step.x),step.depth/2-Math.abs(z-step.z));
+          if (clearance>0 && anchor.position.y>=step.y) {
+            surfaceY=step.y;
+            supportRadius=clearance;
+          }
+        }
+        if (tableClearance>0 && anchor.position.y>=tableSurfaceY) {
+          surfaceY=tableSurfaceY;
+          supportRadius=tableClearance;
+        }
+      }
+      shadow.position.y=surfaceY+.002;
+      const rise=Math.min(1,(anchor.position.y-surfaceY+model.getSoleLift()*model.scale.y)/.16);
       shadow.material.opacity=shadowOpacity*(1-0.45*rise);
-      shadow.scale.copy(shadowSize).multiplyScalar(1-0.20*rise);
+      shadow.scale.copy(shadowSize).multiplyScalar(Math.min(1-.20*rise, 2*supportRadius/shadowSize.x));
       return true;
     }
 
@@ -13672,6 +13936,8 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
         cup:teaResult ? {phase:teaResult.phase,held:teaResult.held,gripError:teaResult.gripError,
           rimError:teaResult.rimError,fill:teaResult.fill,fingerCurl:teaResult.fingerCurl,fingers:teaResult.fingers?{...teaResult.fingers}:null,position:teaSet.cup.position.toArray()} : null,
         touch:phase==='touch' ? {segment:touchSegment,...touchResult} : null,
+        table:tableSegment,
+        plannedTable:scheduled?.tableVisit ?? false,
         plannedTouch:scheduled ? scheduled.touchArt : null,
         greeting:greetings.some(action=>action.phase===phase) ? gesture?.status().greeting ?? null : null,
         plannedWave:scheduled ? scheduled.waveIndex!==null : null,
@@ -13815,7 +14081,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     replayHome.append(replayButton);
   }
 
-  function replayFishPreview() {
+  function replayFishPreview(showNewMoves=false) {
     if (!sceneBooted) return;
     if (!appState.hostControlled) {
       resetSceneClock();
@@ -13826,9 +14092,9 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       beginSession();
       renderHUD();
     } else if (!appState.active || outroStarted) return;
-    fishVisitor.replay();
+    fishVisitor.replay(showNewMoves);
   }
-  replayButton.addEventListener('click', replayFishPreview);
+  replayButton.addEventListener('click', () => replayFishPreview());
   window.__teaFishPreviewStatus = () => fishVisitor.status();
   window.__teaFishPreviewReplay = replayFishPreview;
   window.__teaFishRenderInfo = () => ({calls: firstFrame ? 0 : renderer.info.render.calls, triangles: renderer.info.render.triangles,
