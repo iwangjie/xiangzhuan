@@ -7,6 +7,7 @@ import {
   finishRest,
   focusEnd,
   forceNext,
+  idlePaused,
   pauseFocus,
   phase,
   postponeRest,
@@ -14,6 +15,7 @@ import {
   remainingMs,
   restEnd,
   restForced,
+  restFinishing,
   restInputLocked,
   restOpen,
   resumeFocus,
@@ -150,6 +152,83 @@ test("changing the focus length mid-session rescales the remainder", () => {
   setWorkMinutes(50);
   expect(settings().workMinutes).toBe(50);
   expect(remainingMs()).toBeGreaterThan(before * 1.8);
+});
+
+const minute = 60_000;
+
+test("five idle minutes freeze the timer and a short absence resumes the remainder", () => {
+  reset();
+  startFocus();
+  const since = focusEnd()! - 23 * minute;
+  tick(since + 5 * minute - 1, { idleSince: since, lastAway: null });
+  expect(idlePaused()).toBe(false);
+  tick(since + 5 * minute + 200, { idleSince: since, lastAway: null });
+  expect(idlePaused()).toBe(true);
+  expect(remainingMs()).toBe(18 * minute);
+  tick(since + 12 * minute, { idleSince: since, lastAway: null });
+  expect(remainingMs()).toBe(18 * minute);
+  expect(phase()).toBe("focus");
+  const until = since + 12 * minute;
+  const activity = { idleSince: null, lastAway: { since, until } };
+  tick(until, activity);
+  expect(idlePaused()).toBe(false);
+  expect(remainingMs()).toBe(18 * minute);
+  tick(until + minute, activity);
+  expect(remainingMs()).toBe(17 * minute);
+});
+
+test("an absence as long as the configured focus restarts a full round on input", () => {
+  reset();
+  settings.update((value) => ({ ...value, workMinutes: 45 }));
+  startFocus();
+  const since = focusEnd()! - 40 * minute;
+  const until = since + 45 * minute;
+  const focusBefore = stats().focusMinutes;
+  tick(since + 5 * minute, { idleSince: since, lastAway: null });
+  tick(until, { idleSince: since, lastAway: null });
+  expect(remainingMs()).toBe(35 * minute);
+  expect(phase()).toBe("focus");
+  tick(until, { idleSince: null, lastAway: { since, until } });
+  expect(remainingMs()).toBe(45 * minute);
+  expect(stats().focusMinutes).toBe(focusBefore);
+});
+
+test("the recorded idle interval handles wake even if no tick saw the pause", () => {
+  reset();
+  startFocus();
+  const since = focusEnd()! - 22 * minute;
+  const until = since + 28 * minute;
+  tick(until + 100, { idleSince: null, lastAway: { since, until } });
+  expect(phase()).toBe("focus");
+  expect(remainingMs()).toBe(25 * minute - 100);
+});
+
+test("input at the pause boundary releases a freeze even without a recorded absence", () => {
+  reset();
+  startFocus();
+  const since = focusEnd()! - 25 * minute;
+  const at = since + 5 * minute;
+  tick(at, { idleSince: since, lastAway: null });
+  expect(idlePaused()).toBe(true);
+  tick(at + 100, { idleSince: null, lastAway: null });
+  expect(idlePaused()).toBe(false);
+  expect(remainingMs()).toBe(20 * minute);
+});
+
+test("idle tracking leaves manual pause and the active rest countdown alone", () => {
+  reset();
+  startFocus();
+  pauseFocus();
+  const frozen = remainingMs();
+  const since = Date.now() + 1;
+  const until = since + 30 * minute;
+  tick(until, { idleSince: null, lastAway: { since, until } });
+  expect(remainingMs()).toBe(frozen);
+  expect(idlePaused()).toBe(false);
+  resumeFocus();
+  startRest();
+  tick(restEnd()!, { idleSince: Date.now() - 30 * minute, lastAway: null });
+  expect(restFinishing()).toBe(true);
 });
 
 test("the daily skip cap stops skipping", () => {

@@ -43,6 +43,7 @@ open -g /Applications/香篆.app
 - 阶段：`idle → focus → rest → focus`，另有 `postpone`。`remainingMs` / `totalMs` 是派生量，不要另存一份时间。
 - **启动即专注**：`Shell.tsx` 在 `settingsLoaded()` 之后跑一次 `startFocus()`，用 `autoStarted` 保证只跑一次。
 - **暂停**只冻结 `focusEnd` 的推进：`paused` + `pausedAt`，恢复时把剩余时间重新挂到 `Date.now()`。暂停中改时长按剩余比例重算。
+- **空闲暂停**只影响专注。`native/dock_hide.m` 读系统键鼠空闲时间，将临近 5 分钟的空闲起点和最近一次已完成的空闲区间写到独立的 `input-activity/snapshot.json`。`Shell.tsx` 通过专注心跳把快照交给状态机。短离开恢复剩余时间，空闲达到专注时长后，收到输入再开始完整一轮。手动暂停优先。
 - **休息收尾由页面驱动**：`finishRest()` 置 `restFinishing` 并挂 `OUTRO_MS = 12000` 的兜底定时器；页面收到 `outro: true` 后立刻开始茶汤收尾，发回 `done` → `finishOutro()`。不要只靠 `remainingMs` 归零触发页面收尾。任何 `startRest / postponeRest / skipRest / stopCycle` 都必须先 `clearFinishTimer()`，否则旧定时器会打断新一轮。
 - **休息窗口的关闭有 generation 守卫**（`restGeneration`），`closeRestWindows` 是 420ms 延时 + 代次校验；新增的延时逻辑照抄这个模式。
 - **休息结束不显示主窗口**：`finishOutro / skipRest / postponeRest / stopCycle` 都不调用 `show()`；回到主界面只能由用户点托盘或菜单。休息结束时前台交给 `restActive` 归零后的原生逻辑。

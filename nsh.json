@@ -38,6 +38,7 @@
     "fs": {
       "read": [
         "${homeDir}/Library/LaunchAgents",
+        "${homeDir}/Library/Application Support/com.iwangjie.xiangzhuan/input-activity",
         "/Applications/香篆.app"
       ],
       "write": [

@@ -13,7 +13,7 @@ DYLD_PATH='@executable_path/../Resources/dock_hide.dylib'
 [ -d "$APP" ] || { echo "no app at $APP" >&2; exit 1; }
 mkdir -p "$RES"
 
-clang -dynamiclib -O2 -fobjc-arc -framework AppKit \
+clang -dynamiclib -O2 -fobjc-arc -framework AppKit -framework CoreGraphics \
   -o "$RES/dock_hide.dylib" "$ROOT/native/dock_hide.m"
 
 /usr/libexec/PlistBuddy -c "Delete :LSEnvironment" "$PLIST" >/dev/null 2>&1 || true

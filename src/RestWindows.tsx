@@ -4,6 +4,7 @@ import {
   canPostponeNow,
   canSkipNow,
   finishOutro,
+  idlePaused,
   now,
   paused,
   phase,
@@ -25,7 +26,7 @@ const PREWARM_MS = 5000;
 const needsRestPage = computed(() => {
   if (restOpen()) return true;
   const current = phase();
-  return (current === "focus" || current === "postpone") && !paused() && remainingMs() <= PREWARM_MS;
+  return (current === "focus" || current === "postpone") && !paused() && !idlePaused() && remainingMs() <= PREWARM_MS;
 });
 
 // Keep the native windows handy, but give each rest its own WebView.
