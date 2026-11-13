@@ -9184,7 +9184,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       <button class="view-btn active" data-view="front" type="button">茶席</button>
       <button class="view-btn" data-view="close" type="button">香篆</button>
       <button class="view-btn" data-view="scroll" type="button">书画</button>
-      <button class="view-btn" id="fish-replay" type="button">重播大肥鱼</button>
+      <button class="view-btn" id="fish-replay" type="button">大肥鱼</button>
     </nav>
   </header>
 
@@ -9372,10 +9372,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
 
     if (!appState.active) {
       restStarted = false;
-      if (wasActive) {
-        fishVisitor?.stop();
-        stageNextScroll();
-      }
+      if (wasActive) fishVisitor?.stop();
     }
     if (appState.active && !wasActive) {
       appState.visitSeed = Number.isFinite(s.visitSeed) ? s.visitSeed : null;
@@ -13098,7 +13095,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     let speed = 0, locomotion = false;
 
     let modelPreparation;
-    function loadModel(roomReady) {
+    function loadModel() {
       if (model || loading) return modelPreparation;
       loading = true;
       failure = null;
@@ -13117,9 +13114,6 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
           compilePreviewPrograms(asset.root,camera,scene),
           warmPreviewTextures(renderer,textures,startupPaint,6)
         ]);
-        // The actor's first draw stays behind the room uploads, even when
-        // the actor data and both sets of programs are being prepared together.
-        if (roomReady) await roomReady;
         try {
           await warmFishDraw(THREE,renderer,asset,shadow,scene,camera,startupPaint,canvasFormat);
         } catch (error) {
@@ -13359,7 +13353,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
         if(scheduled.touchArt)scheduled.order.splice(artIndex+1,0,touchAct);
         scheduled.peek=allowPeek && scheduled.peek;
         phase='waiting';
-        loadModel();
+        failure=null;
       }
     }
 
@@ -13446,13 +13440,16 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     }
 
     function update(dt, remainingMs, frameTimestamp, wallDelta=dt) {
-      if (scheduled && remainingMs<=scheduled.triggerMs) {
+      // Give the room its first frame. Only this round's visitors then
+      // prepare the rig; an unready fish stays offstage.
+      if (scheduled && !firstFrame) {
         if (remainingMs<scheduled.reserveMs) {
           scheduled=null;
           phase='away';
           return;
         }
-        if (!model) return;
+        if (!model && !loading && !failure) loadModel();
+        if (!model || remainingMs>scheduled.triggerMs) return;
         const {order,peek,compact}=scheduled;
         scheduled=null;
         start(order,peek,false,compact);
@@ -13686,7 +13683,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       };
     }
 
-    return {begin,beginOutro,stop,update,replay,status,anchor,prepare:loadModel,setScrollTexture:smallScroll.setTexture};
+    return {begin,beginOutro,stop,update,replay,status,anchor,setScrollTexture:smallScroll.setTexture};
   }
 
   const fishVisitor = createFishPreviewVisitor();
@@ -13842,19 +13839,14 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
   renderHUD();
   resizeRenderer();
   const scrollStage = createScrollStage();
-  const roomPreparation = (async () => {
-    await startupPaint();
-    try {
-      releaseStartupPrograms = await warmTeaRoomPrograms(THREE, renderer, scene, camera, windowLight.shadow.camera, compilePreviewPrograms);
-      await warmPreviewTextures(renderer, [scene.environment,...Object.values(textures)], startupPaint);
-    } catch (error) {
-      console.warn('茶室预载失败，继续正常绘制', error);
-    }
-    roomCache.prepare(camera, canvasFormat);
-  })();
-  // Keep the curtain over the scene until the first actor draw has run.
-  await fishVisitor.prepare(roomPreparation);
-  await roomPreparation;
+  await startupPaint();
+  try {
+    releaseStartupPrograms = await warmTeaRoomPrograms(THREE, renderer, scene, camera, windowLight.shadow.camera, compilePreviewPrograms);
+    await warmPreviewTextures(renderer, [scene.environment,...Object.values(textures)], startupPaint);
+  } catch (error) {
+    console.warn('茶室预载失败，继续正常绘制', error);
+  }
+  roomCache.prepare(camera, canvasFormat);
   sceneBooted = true;
   if (pendingHostState) window.shrineState(pendingHostState);
   if (pendingHostView) window.shrineView(pendingHostView, true);

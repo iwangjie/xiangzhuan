@@ -1,13 +1,15 @@
-import { effect, signal, View, WebView, type WebViewRef } from "nsh";
+import { cleanup, computed, effect, signal, View, WebView, type WebViewRef } from "nsh";
 import { displays, Window, type Display } from "nsh/desktop";
 import {
   canPostponeNow,
   canSkipNow,
   finishOutro,
   now,
+  paused,
   phase,
   phaseLine,
   postponeRest,
+  remainingMs,
   restEnd,
   restFinishing,
   restForced,
@@ -19,11 +21,16 @@ import {
 } from "./state";
 import { SHRINE_HTML } from "./shrine-html";
 
-// The shrine WebView is heavy (procedural textures and shaders), so load it
-// once, hidden, shortly after launch; a rest then only shows it. This keeps
-// the main window → rest transition smooth even on slow machines.
-const prewarmed = signal(false);
-setTimeout(() => prewarmed.set(true), 1400);
+const PREWARM_MS = 5000;
+const needsRestPage = computed(() => {
+  if (restOpen()) return true;
+  const current = phase();
+  return (current === "focus" || current === "postpone") && !paused() && remainingMs() <= PREWARM_MS;
+});
+
+// Keep the native windows handy, but give each rest its own WebView.
+const windowsReady = signal(false);
+setTimeout(() => windowsReady.set(true), 1400);
 
 function showRestWindow(win: NonNullable<ReturnType<typeof Window.get>>, display: Display): void {
   const bounds = display.bounds;
@@ -39,37 +46,53 @@ function showRestWindow(win: NonNullable<ReturnType<typeof Window.get>>, display
 export function RestWindows() {
   return (
     <Each of={displays()} key={(display: Display) => display.id}>
-      {(display) => (
-        <Window
-          id={`rest:${display().id}`}
-          open={prewarmed()}
-          ref={(win) => {
-            win.hide();
-            if (restOpen()) showRestWindow(win, display());
-          }}
-          title="香篆 · 休息"
-          frame="none"
-          defaultPosition={{ x: -12000, y: -12000 }}
-          defaultSize={{ width: 1, height: 1 }}
-          level="aboveDock"
-          workspaces="all"
-          resizable={false}
-          movable={false}
-          minimizable={false}
-          maximizable={false}
-          closable={false}
-          focusable={true}
-          activate={true}
-          closeOnEscape={false}
-          closeOnBlur={false}
-          shadow={false}
-          taskbar={false}
-          backdrop="none"
-        >
-          <RestScreen display={display()} />
-        </Window>
-      )}
+      {(display) => <RestWindow display={display()} />}
     </Each>
+  );
+}
+
+function RestWindow(props: { display: Display }) {
+  effect(() => {
+    const open = restOpen();
+    const win = Window.get(`rest:${props.display.id}`);
+    if (!win) return;
+    if (open) showRestWindow(win, props.display);
+    else win.hide();
+  });
+
+  return (
+    <Window
+      id={`rest:${props.display.id}`}
+      open={windowsReady() || restOpen()}
+      ref={(win) => {
+        win.hide();
+        if (restOpen()) showRestWindow(win, props.display);
+      }}
+      title="香篆 · 休息"
+      frame="none"
+      defaultPosition={{ x: -12000, y: -12000 }}
+      defaultSize={{ width: 1, height: 1 }}
+      level="aboveDock"
+      workspaces="all"
+      resizable={false}
+      movable={false}
+      minimizable={false}
+      maximizable={false}
+      closable={false}
+      focusable={true}
+      activate={true}
+      closeOnEscape={false}
+      closeOnBlur={false}
+      shadow={false}
+      taskbar={false}
+      backdrop="none"
+    >
+      <View style={{ flex: 1, backgroundColor: "#070504" }}>
+        <If when={needsRestPage()}>
+          <RestScreen display={props.display} />
+        </If>
+      </View>
+    </Window>
   );
 }
 
@@ -77,6 +100,8 @@ export function RestWindows() {
  * reports them back through `window.nsh.postMessage`. */
 function RestScreen(props: { display: Display }) {
   let view: WebViewRef | null = null;
+  const loaded = signal(false);
+  cleanup(() => { view = null; });
 
   const post = () => {
     if (!view) return;
@@ -103,62 +128,43 @@ function RestScreen(props: { display: Display }) {
   };
 
   effect(() => {
-    // The rest window is prewarmed hidden; showing it is a resize + show, not
-    // a page load.
-    const open = restOpen();
-    const win = Window.get(`rest:${props.display.id}`);
-    if (!win) return;
-    if (open) showRestWindow(win, props.display);
-    else win.hide();
+    if (restOpen() && loaded()) view?.focus();
   });
 
   effect(() => {
-    // Track every field the page shows; the 250 ms tick republishes it.
-    restLeft();
-    canPostponeNow();
-    canSkipNow();
-    restForced();
-    restInputLocked();
-    restFinishing();
-    phase();
-    phaseLine();
-    post();
+    if (loaded()) post();
   });
 
   return (
-    <View style={{ flex: 1, backgroundColor: "#070504" }}>
-      <WebView
-        ref={(node) => {
-          view = node;
-        }}
-        html={SHRINE_HTML}
-        style={{ flex: 1 }}
-        scrollable={false}
-        onLoad={() => {
-          view?.focus();
-          post();
-        }}
-        onMessage={(event) => {
-          switch (String(event.data)) {
-            case "ready":
-              post();
-              break;
-            case "skip":
-              skipRest();
-              break;
-            case "postpone":
-              postponeRest();
-              break;
-            case "done":
-              finishOutro();
-              break;
-            default:
-              // View switches stay inside the page.
-              break;
-          }
-        }}
-      />
-    </View>
+    <WebView
+      ref={(node) => {
+        view = node;
+      }}
+      html={SHRINE_HTML}
+      style={{ flex: 1 }}
+      scrollable={false}
+      onLoad={() => loaded.set(true)}
+      onMessage={(event) => {
+        if (!view) return;
+        switch (String(event.data)) {
+          case "ready":
+            post();
+            break;
+          case "skip":
+            skipRest();
+            break;
+          case "postpone":
+            postponeRest();
+            break;
+          case "done":
+            finishOutro();
+            break;
+          default:
+            // View switches stay inside the page.
+            break;
+        }
+      }}
+    />
   );
 }
 
