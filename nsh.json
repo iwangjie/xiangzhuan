@@ -45,6 +45,8 @@
         "${homeDir}/Library/LaunchAgents"
       ]
     },
+    "application": true,
+    "homeDir": true,
     "statusBar": true,
     "windows": true,
     "webview": {
