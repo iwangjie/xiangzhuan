@@ -1,11 +1,12 @@
 import { cleanup, computed, effect, keymap, lifecycle, untracked } from "nsh";
-import { Menu, Tray, type MenuItem } from "nsh/desktop";
+import { Menu, Tray, Window, type MenuItem } from "nsh/desktop";
 import trayIcon from "../assets/tray.svg";
 import { readInputActivity } from "./input-activity";
 import { ensureLoginItem, setLoginItem } from "./login-item";
 import {
   canPostponeNow,
   canSkipNow,
+  focusEnd,
   formatClock,
   idlePaused,
   loadSettings,
@@ -14,6 +15,8 @@ import {
   phaseLabel,
   postponeRest,
   remainingMs,
+  restEnd,
+  restFinishing,
   restForced,
   restInputLocked,
   saveSettings,
@@ -191,29 +194,75 @@ export function Shell() {
 
   let checkingInput = false;
   let disposed = false;
-  const pulse = () => {
-    if (phase() !== "focus" || paused()) {
-      tick();
-      return;
-    }
-    if (checkingInput) return;
+  cleanup(() => {
+    disposed = true;
+  });
+
+  const checkActivity = () => {
+    if (checkingInput || phase() !== "focus" || paused()) return;
     checkingInput = true;
-    void readInputActivity().then((activity) => {
-      if (!disposed) tick(Date.now(), activity);
-    }).finally(() => { checkingInput = false; });
+    void readInputActivity()
+      .then((activity) => {
+        if (disposed || !activity) return;
+        if (activity.idleSince !== null || activity.lastAway !== null || idlePaused()) {
+          tick(Date.now(), activity);
+        }
+      })
+      .finally(() => {
+        checkingInput = false;
+      });
+  };
+
+  const syncFocus = () => {
+    tick();
+    checkActivity();
   };
 
   effect(() => {
-    untracked(pulse);
-    const timer = setInterval(pulse, 250);
+    const p = phase();
+    const isPaused = paused();
+    const isIdlePaused = idlePaused();
+    const fEnd = focusEnd();
+    const rEnd = restEnd();
+    const finishing = restFinishing();
+    const mainVisible = Window.get("main")?.state()?.visible ?? false;
+    const appLife = lifecycle();
+    void p;
+    void isPaused;
+    void isIdlePaused;
+    void fEnd;
+    void rEnd;
+    void finishing;
+    void mainVisible;
+    void appLife;
+
+    let timer: number | undefined;
+    let cancelled = false;
+
+    const arm = () => {
+      if (cancelled) return;
+      const delay = untracked(() => nextTickDelay(mainVisible));
+      if (delay != null) timer = setTimeout(onTick, delay);
+    };
+
+    const onTick = () => {
+      if (cancelled) return;
+      untracked(syncFocus);
+      arm();
+    };
+
+    arm();
     cleanup(() => {
-      disposed = true;
-      clearInterval(timer);
+      cancelled = true;
+      if (timer !== undefined) clearTimeout(timer);
     });
   });
 
   effect(() => {
-    if (lifecycle() === "active") untracked(pulse);
+    if (lifecycle() === "active") {
+      const wakeTimer = setTimeout(() => untracked(() => syncFocus()), 0);
+      cleanup(() => clearTimeout(wakeTimer));
+    }
   });
 
   let loginChecked = false;
@@ -229,4 +278,34 @@ export function Shell() {
   });
 
   return null;
+}
+
+function nextTickDelay(mainVisible: boolean): number | null {
+  const p = phase();
+  if (p === "idle") return null;
+  if (p === "focus" && paused()) return null;
+  if (p === "focus" && idlePaused()) return mainVisible ? 1000 : 5000;
+
+  if (p === "rest") {
+    if (restFinishing()) return null;
+    const end = restEnd();
+    if (end == null) return null;
+    const left = end - Date.now();
+    if (left <= 0) return 16;
+    return Math.min(left, ((left - 1) % 1000) + 1 + 15);
+  }
+
+  const end = focusEnd();
+  if (end == null) return null;
+  const left = end - Date.now();
+  if (left <= 0) return 16;
+
+  if (mainVisible || left <= 60_000) {
+    return Math.min(left, ((left - 1) % 1000) + 1 + 15);
+  }
+
+  // Main window is hidden and > 60 s remain: the tray only shows whole minutes.
+  const mins = Math.ceil(left / 60_000);
+  const untilDrop = mins > 1 ? left - (mins - 1) * 60_000 : left - 59_999;
+  return Math.min(left, Math.max(1, untilDrop) + 15);
 }

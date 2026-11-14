@@ -9418,6 +9418,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       console.log('[nsh]', msg);
     }
   }
+  const isHosted = !!(window.nsh && typeof window.nsh.postMessage === 'function');
 
   const appState = {
     remainingMs: 90000,
@@ -9736,6 +9737,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
   }
 
   // 构建具有真实窗格亮带与暖色室内漫反射的 HDR 感全景环境贴图，赋予白瓷、茶汤、紫砂、古铜逼真高光眼神光
+  let envRenderTarget = null;
   function buildStudioEnvironment() {
     const envTex = makeCanvasTexture(1024, 512, (ctx, w, h) => {
       const bg = ctx.createLinearGradient(0, 0, 0, h);
@@ -9794,6 +9796,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     const pmrem = new THREE.PMREMGenerator(renderer);
     pmrem.compileEquirectangularShader();
     const envRT = pmrem.fromEquirectangular(envTex);
+    envRenderTarget = envRT;
     scene.environment = envRT.texture;
     envTex.dispose();
     pmrem.dispose();
@@ -12917,8 +12920,8 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     const dt = presentationStep(frameTime);
     elapsed += dt;
 
-    // 独立浏览器预览模式（当宿主尚未接管时，自动按真实时间缓慢推进演示）
-    if (!appState.hostControlled) {
+    // 独立浏览器预览模式（仅无宿主时自动推进演示）
+    if (!isHosted && !appState.hostControlled) {
       if (!restStarted) {
         appState.active = true;
         beginSession();
@@ -14099,6 +14102,30 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
   window.__teaFishPreviewReplay = replayFishPreview;
   window.__teaFishRenderInfo = () => ({calls: firstFrame ? 0 : renderer.info.render.calls, triangles: renderer.info.render.triangles,
     geometries: renderer.info.memory.geometries, pixelRatio: renderer.getPixelRatio(), cache: roomCache.info()});
+
+  function disposeScene() {
+    pauseSceneFrame();
+    scene.traverse(obj => {
+      if (obj.geometry && typeof obj.geometry.dispose === 'function') {
+        obj.geometry.dispose();
+      }
+      if (obj.material) {
+        const mats = Array.isArray(obj.material) ? obj.material : [obj.material];
+        mats.forEach(m => { if (m && typeof m.dispose === 'function') m.dispose(); });
+      }
+    });
+    Object.keys(textures).forEach(k => {
+      const t = textures[k];
+      if (t && typeof t.dispose === 'function') t.dispose();
+    });
+    if (envRenderTarget) {
+      envRenderTarget.dispose();
+      envRenderTarget = null;
+    }
+    renderer.dispose();
+  }
+
+  window.addEventListener('pagehide', disposeScene);
 
   camera.position.copy(VIEWS.front.pos);
   camera.lookAt(VIEWS.front.target);

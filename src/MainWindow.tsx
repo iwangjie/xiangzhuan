@@ -9,6 +9,7 @@ import {
   Scroll,
   Text,
   View,
+  untracked,
 } from "nsh";
 import { Switch } from "nsh/base";
 import { currentWindow, titleBar } from "nsh/desktop";
@@ -68,9 +69,24 @@ export function MainWindow() {
     if (phase() === "rest") win.hide();
   });
 
+  const visible = () => win.state()?.visible ?? false;
+  const shownRemainingMs = () => (visible() ? remainingMs() : untracked(remainingMs));
+
   let shownPart = 1;
+  let wasVisible = false;
   effect(() => {
+    const shown = visible();
     const part = remainingPart();
+    if (!shown) {
+      wasVisible = false;
+      return;
+    }
+    if (!wasVisible) {
+      wasVisible = true;
+      shownPart = part;
+      ring.set(part);
+      return;
+    }
     if (part === shownPart) return;
     shownPart = part;
     if (reduceMotion()) ring.set(part);
@@ -123,7 +139,7 @@ export function MainWindow() {
                 <Text
                   class="text-[54px] font-light leading-none tracking-[-0.045em] text-countdown tabular-nums"
                 >
-                  {formatClock(remainingMs())}
+                  {formatClock(shownRemainingMs())}
                 </Text>
                 <Text class="mt-2 text-[11px] tracking-[0.04em] text-muted-foreground">
                   {isIdle() ? `一炷香 · ${settings().workMinutes} 分钟` : isPaused() ? "已暂停 · 点继续" : phaseLine()}

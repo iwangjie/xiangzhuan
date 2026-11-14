@@ -312,6 +312,7 @@ export function startRest(completedWork = false): void {
   restGeneration++;
   restOpen.set(true);
   publishRestBridge(true);
+  focusEnd.set(null);
   restEnd.set(Date.now() + restMs());
   phase.set("rest");
   Window.get("main")?.hide();
@@ -329,8 +330,8 @@ function closeRestWindows(): void {
 
 function nextWork(): void {
   if (restReturn === "idle") {
-    phase.set("idle");
     focusEnd.set(null);
+    phase.set("idle");
   } else {
     startFocusCountdown(Date.now());
   }
@@ -373,8 +374,8 @@ export function postponeRest(): void {
   restEnd.set(null);
   restForced.set(false);
   closeRestWindows();
-  phase.set("postpone");
   focusEnd.set(Date.now() + postponeMs());
+  phase.set("postpone");
 }
 
 export function skipRest(): void {
@@ -463,6 +464,7 @@ export function showApp(): void {
     if (screen) Window.get(`rest:${screen.id}`)?.focus();
     return;
   }
+  tick();
   const main = Window.get("main");
   main?.show();
   main?.focus();

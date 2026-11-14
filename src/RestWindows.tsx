@@ -22,6 +22,9 @@ import {
 } from "./state";
 import { SHRINE_HTML } from "./shrine-html";
 
+// The shrine page is expensive to build (procedural textures, shader compile),
+// so it is only mounted in the last few seconds before a rest. Before that the
+// native window exists alone, which costs nothing measurable.
 const PREWARM_MS = 5000;
 const needsRestPage = computed(() => {
   if (restOpen()) return true;
@@ -29,7 +32,6 @@ const needsRestPage = computed(() => {
   return (current === "focus" || current === "postpone") && !paused() && !idlePaused() && remainingMs() <= PREWARM_MS;
 });
 
-// Keep the native windows handy, but give each rest its own WebView.
 const windowsReady = signal(false);
 setTimeout(() => windowsReady.set(true), 1400);
 
@@ -102,7 +104,9 @@ function RestWindow(props: { display: Display }) {
 function RestScreen(props: { display: Display }) {
   let view: WebViewRef | null = null;
   const loaded = signal(false);
-  cleanup(() => { view = null; });
+  cleanup(() => {
+    view = null;
+  });
 
   const post = () => {
     if (!view) return;
@@ -142,9 +146,13 @@ function RestScreen(props: { display: Display }) {
         view = node;
       }}
       html={SHRINE_HTML}
-      style={{ flex: 1 }}
+      style={{ flex: 1, opacity: loaded() ? 1 : 0 }}
       scrollable={false}
-      onLoad={() => loaded.set(true)}
+      onLoad={() => {
+        loaded.set(true);
+        view?.focus();
+        post();
+      }}
       onMessage={(event) => {
         if (!view) return;
         switch (String(event.data)) {

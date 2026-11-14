@@ -2,8 +2,8 @@
 // `hideDockIcon` storage key. nsh's runner calls
 // `-[NSApplication setActivationPolicy:]` with nsh.json's policy; this swizzle
 // replaces that policy with Accessory while hiding is on and Regular while it
-// is off, and toggles live by polling the app's storage.json (default: hidden,
-// also absent the key).
+// is off, and toggles live via a kqueue vnode watcher on the app's storage.json
+// (default: hidden, also absent the key).
 //
 // It also owns the rest lock. The host writes `restActive` and `restLock`
 // into the same storage file. While `restLock` is "1" the dylib raises the
@@ -12,13 +12,21 @@
 // the window levels and activates the app that was in front before the rest.
 #import <AppKit/AppKit.h>
 #import <CoreGraphics/CoreGraphics.h>
-#import <objc/runtime.h>
+#import <fcntl.h>
 #import <math.h>
+#import <objc/runtime.h>
+#import <sys/stat.h>
 
 static NSString *bundleId;
+static NSString *prefDir;
 static NSString *prefPath;
 static BOOL hideDock = YES;
-static NSTimer *pollTimer;
+static NSTimer *restTimer;
+static dispatch_source_t dirSource;
+static dispatch_source_t fileSource;
+static ino_t watchedInode = 0;
+static BOOL hasLastStat = NO;
+static struct stat lastStat;
 
 // MARK: Input activity
 
@@ -74,7 +82,6 @@ static void publishInputActivity(void) {
   pendingWrite = ![data writeToFile:path options:NSDataWritingAtomic error:NULL];
   if (!pendingWrite) publishedSince = idleSince;
 }
-
 // MARK: Dock policy
 
 static BOOL (*origSetPolicy)(id, SEL, NSInteger);
@@ -184,6 +191,8 @@ static void raiseRestWindows(void) {
   }
 }
 
+static void installInputMonitors(void);
+static void removeInputMonitors(void);
 static void applyRestLock(BOOL on) {
   if (on == lockApplied) return;
   NSApplication *app = NSApplication.sharedApplication;
@@ -203,11 +212,13 @@ static void applyRestLock(BOOL on) {
                NSApplicationPresentationDisableHideApplication;
     [app activateIgnoringOtherApps:YES];
     app.presentationOptions = options;
+    installInputMonitors();
     raiseRestWindows();
     return;
   }
 
   lockApplied = NO;
+  removeInputMonitors();
   app.presentationOptions = savedPresentationOptions;
   for (NSWindow *win in savedLevels) {
     if (!win) continue;
@@ -269,56 +280,47 @@ static void installActivationTracking(void) {
 }
 
 static void installInputMonitors(void) {
-  NSEventMask keyMask = NSEventMaskKeyDown | NSEventMaskKeyUp |
-                        NSEventMaskFlagsChanged | NSEventMaskSystemDefined;
-  keyMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:keyMask
-                                                     handler:^NSEvent *(NSEvent *event) {
-                                                       return lockApplied ? nil : event;
-                                                     }];
-  NSEventMask mouseMask = NSEventMaskLeftMouseDown | NSEventMaskLeftMouseUp |
-                          NSEventMaskRightMouseDown | NSEventMaskRightMouseUp |
-                          NSEventMaskOtherMouseDown | NSEventMaskOtherMouseUp |
-                          NSEventMaskLeftMouseDragged | NSEventMaskRightMouseDragged |
-                          NSEventMaskOtherMouseDragged | NSEventMaskMouseMoved |
-                          NSEventMaskScrollWheel | NSEventMaskTabletPoint |
-                          NSEventMaskTabletProximity | NSEventMaskGesture |
-                          NSEventMaskMagnify | NSEventMaskSwipe | NSEventMaskRotate |
-                          NSEventMaskBeginGesture | NSEventMaskEndGesture |
-                          NSEventMaskCursorUpdate | NSEventMaskMouseEntered |
-                          NSEventMaskMouseExited;
-  mouseMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:mouseMask
+  if (!keyMonitor) {
+    NSEventMask keyMask = NSEventMaskKeyDown | NSEventMaskKeyUp |
+                          NSEventMaskFlagsChanged | NSEventMaskSystemDefined;
+    keyMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:keyMask
                                                        handler:^NSEvent *(NSEvent *event) {
                                                          return lockApplied ? nil : event;
                                                        }];
+  }
+  if (!mouseMonitor) {
+    NSEventMask mouseMask = NSEventMaskLeftMouseDown | NSEventMaskLeftMouseUp |
+                            NSEventMaskRightMouseDown | NSEventMaskRightMouseUp |
+                            NSEventMaskOtherMouseDown | NSEventMaskOtherMouseUp |
+                            NSEventMaskLeftMouseDragged | NSEventMaskRightMouseDragged |
+                            NSEventMaskOtherMouseDragged | NSEventMaskMouseMoved |
+                            NSEventMaskScrollWheel | NSEventMaskTabletPoint |
+                            NSEventMaskTabletProximity | NSEventMaskGesture |
+                            NSEventMaskMagnify | NSEventMaskSwipe | NSEventMaskRotate |
+                            NSEventMaskBeginGesture | NSEventMaskEndGesture |
+                            NSEventMaskCursorUpdate | NSEventMaskMouseEntered |
+                            NSEventMaskMouseExited;
+    mouseMonitor = [NSEvent addLocalMonitorForEventsMatchingMask:mouseMask
+                                                         handler:^NSEvent *(NSEvent *event) {
+                                                           return lockApplied ? nil : event;
+                                                         }];
+  }
 }
 
-static void refreshRest(NSDictionary *storage) {
-  if (!storage) return;
-  id activeValue = storage[@"restActive"];
-  id lockValue = storage[@"restLock"];
-  BOOL active = [activeValue isKindOfClass:NSString.class] && [activeValue isEqualToString:@"1"];
-  BOOL wantsLock = [lockValue isKindOfClass:NSString.class] && [lockValue isEqualToString:@"1"];
+static void removeInputMonitors(void) {
+  if (keyMonitor) {
+    [NSEvent removeMonitor:keyMonitor];
+    keyMonitor = nil;
+  }
+  if (mouseMonitor) {
+    [NSEvent removeMonitor:mouseMonitor];
+    mouseMonitor = nil;
+  }
+}
+
+static void maintainRestState(void) {
+  if (!restActive) return;
   NSTimeInterval now = uptime();
-
-  if (active && !restActive) {
-    restActive = YES;
-    lockSuppressed = NO;
-    captureReturnApp();
-  }
-
-  if (!active) {
-    if (restActive) {
-      restActive = NO;
-      if (lockApplied) applyRestLock(NO);
-      restoreReturnApp();
-    } else if (lockApplied) {
-      applyRestLock(NO);
-    }
-    restWantsLock = NO;
-    return;
-  }
-
-  restWantsLock = wantsLock;
 
   // A stuck rest must never trap the desktop: the longest configured rest is
   // 120 s plus the page's ~7 s outro (12 s fallback), so five minutes is a
@@ -338,6 +340,137 @@ static void refreshRest(NSDictionary *storage) {
   if (lockApplied) raiseRestWindows();
 }
 
+static void updateRestTimer(void) {
+  if (!restActive) {
+    if (restTimer) {
+      [restTimer invalidate];
+      restTimer = nil;
+    }
+    return;
+  }
+  if (restTimer) return;
+  restTimer = [NSTimer timerWithTimeInterval:0.15
+                                     repeats:YES
+                                       block:^(NSTimer *timer) {
+                                         (void)timer;
+                                         maintainRestState();
+                                       }];
+  restTimer.tolerance = 0.05;
+  [[NSRunLoop mainRunLoop] addTimer:restTimer forMode:NSRunLoopCommonModes];
+}
+
+static void refreshRest(NSDictionary *storage) {
+  if (!storage) return;
+  id activeValue = storage[@"restActive"];
+  id lockValue = storage[@"restLock"];
+  BOOL active = [activeValue isKindOfClass:NSString.class] && [activeValue isEqualToString:@"1"];
+  BOOL wantsLock = [lockValue isKindOfClass:NSString.class] && [lockValue isEqualToString:@"1"];
+
+  if (active && !restActive) {
+    restActive = YES;
+    lockSuppressed = NO;
+    captureReturnApp();
+  }
+
+  if (!active) {
+    if (restActive) {
+      restActive = NO;
+      if (lockApplied) applyRestLock(NO);
+      restoreReturnApp();
+    } else if (lockApplied) {
+      applyRestLock(NO);
+    }
+    restWantsLock = NO;
+    updateRestTimer();
+    return;
+  }
+
+  restWantsLock = wantsLock;
+  maintainRestState();
+  updateRestTimer();
+}
+
+static void syncFromStorage(void) {
+  struct stat st;
+  if (stat(prefPath.UTF8String, &st) != 0) return;
+  if (hasLastStat && st.st_ino == lastStat.st_ino && st.st_size == lastStat.st_size &&
+      st.st_mtimespec.tv_sec == lastStat.st_mtimespec.tv_sec &&
+      st.st_mtimespec.tv_nsec == lastStat.st_mtimespec.tv_nsec) {
+    return;
+  }
+  NSDictionary *storage = readStorage();
+  if (!storage) return;
+  lastStat = st;
+  hasLastStat = YES;
+  refreshDock(storage);
+  refreshRest(storage);
+}
+
+static void watchStorageFile(void) {
+  if (fileSource) {
+    dispatch_source_cancel(fileSource);
+    fileSource = nil;
+  }
+  watchedInode = 0;
+
+  int fd = open(prefPath.UTF8String, O_EVTONLY);
+  if (fd < 0) return;
+  struct stat st;
+  if (fstat(fd, &st) == 0) watchedInode = st.st_ino;
+
+  dispatch_source_t src = dispatch_source_create(
+      DISPATCH_SOURCE_TYPE_VNODE, (uintptr_t)fd,
+      DISPATCH_VNODE_WRITE | DISPATCH_VNODE_EXTEND | DISPATCH_VNODE_ATTRIB |
+          DISPATCH_VNODE_DELETE | DISPATCH_VNODE_RENAME,
+      dispatch_get_main_queue());
+  if (!src) {
+    close(fd);
+    return;
+  }
+  dispatch_source_set_cancel_handler(src, ^{
+    close(fd);
+  });
+  dispatch_source_set_event_handler(src, ^{
+    unsigned long flags = dispatch_source_get_data(src);
+    if (flags & (DISPATCH_VNODE_DELETE | DISPATCH_VNODE_RENAME)) {
+      watchStorageFile();
+    }
+    syncFromStorage();
+  });
+  fileSource = src;
+  dispatch_resume(src);
+}
+
+static BOOL installStorageWatcher(void) {
+  [[NSFileManager defaultManager] createDirectoryAtPath:prefDir
+                            withIntermediateDirectories:YES
+                                             attributes:nil
+                                                  error:nil];
+  int dirFd = open(prefDir.UTF8String, O_EVTONLY);
+  if (dirFd < 0) return NO;
+
+  dispatch_source_t src = dispatch_source_create(
+      DISPATCH_SOURCE_TYPE_VNODE, (uintptr_t)dirFd, DISPATCH_VNODE_WRITE, dispatch_get_main_queue());
+  if (!src) {
+    close(dirFd);
+    return NO;
+  }
+  dispatch_source_set_cancel_handler(src, ^{
+    close(dirFd);
+  });
+  dispatch_source_set_event_handler(src, ^{
+    struct stat st;
+    if (!fileSource || (stat(prefPath.UTF8String, &st) == 0 && st.st_ino != watchedInode)) {
+      watchStorageFile();
+    }
+    syncFromStorage();
+  });
+  dirSource = src;
+  dispatch_resume(src);
+  watchStorageFile();
+  return YES;
+}
+
 // MARK: Install
 
 __attribute__((constructor)) static void install(void) {
@@ -348,9 +481,9 @@ __attribute__((constructor)) static void install(void) {
 
   bundleId = [[NSBundle mainBundle] bundleIdentifier];
   if (bundleId.length == 0) bundleId = @"com.iwangjie.xiangzhuan";
-  prefPath = [NSHomeDirectory()
-      stringByAppendingPathComponent:
-          [NSString stringWithFormat:@"Library/Application Support/%@/storage.json", bundleId]];
+  prefDir = [NSHomeDirectory()
+      stringByAppendingPathComponent:[NSString stringWithFormat:@"Library/Application Support/%@", bundleId]];
+  prefPath = [prefDir stringByAppendingPathComponent:@"storage.json"];
 
   savedLevels = [NSMapTable weakToStrongObjectsMapTable];
   savedBehaviors = [NSMapTable weakToStrongObjectsMapTable];
@@ -359,7 +492,6 @@ __attribute__((constructor)) static void install(void) {
   // from the start, then follow the stored preferences once the app is up.
   dispatch_async(dispatch_get_main_queue(), ^{
     installActivationTracking();
-    installInputMonitors();
 
     NSDictionary *initial = readStorage();
     if (initial) {
@@ -367,23 +499,27 @@ __attribute__((constructor)) static void install(void) {
       hideDock = !([value isKindOfClass:NSString.class] && [value isEqualToString:@"0"]);
     }
     applyPolicy();
+    syncFromStorage();
 
     publishInputActivity();
-    NSTimer *activityTimer = [NSTimer timerWithTimeInterval:0.25 repeats:YES block:^(NSTimer *timer) {
-      (void)timer;
-      publishInputActivity();
-    }];
+    NSTimer *activityTimer = [NSTimer timerWithTimeInterval:1.0
+                                                 repeats:YES
+                                                   block:^(NSTimer *timer) {
+                                                     (void)timer;
+                                                     publishInputActivity();
+                                                   }];
+    activityTimer.tolerance = 0.5;
     [[NSRunLoop mainRunLoop] addTimer:activityTimer forMode:NSRunLoopCommonModes];
 
-    pollTimer = [NSTimer timerWithTimeInterval:0.1
-                                       repeats:YES
-                                         block:^(NSTimer *timer) {
-                                           (void)timer;
-                                           NSDictionary *storage = readStorage();
-                                           if (!storage) return;
-                                           refreshDock(storage);
-                                           refreshRest(storage);
-                                         }];
-    [[NSRunLoop mainRunLoop] addTimer:pollTimer forMode:NSRunLoopCommonModes];
+    if (!installStorageWatcher()) {
+      NSTimer *fallback = [NSTimer timerWithTimeInterval:1.0
+                                                 repeats:YES
+                                                   block:^(NSTimer *timer) {
+                                                     (void)timer;
+                                                     syncFromStorage();
+                                                   }];
+      fallback.tolerance = 0.25;
+      [[NSRunLoop mainRunLoop] addTimer:fallback forMode:NSRunLoopCommonModes];
+    }
   });
 }

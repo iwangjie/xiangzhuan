@@ -7,21 +7,21 @@
 macOS 菜单栏的专注 / 休息提醒。用 nsh（AppKit 原生视图 + TSX）写宿主，休息屏是一个内联的 three.js 单页场景（WebView）。
 
 - 应用：`nsh.json`（bundle id `com.iwangjie.xiangzhuan`，macOS 14+）
-- 入口：`App.tsx` → `src/Shell.tsx`（托盘 / 菜单 / 心跳）+ `src/MainWindow.tsx` + `src/RestWindows.tsx`
-- 状态：`src/state.ts`，唯一的事实来源；测试在 `src/state.test.ts`
+- 入口：`App.tsx` → `src/Shell.tsx`（托盘 / 菜单 / 调度）+ `src/MainWindow.tsx` + `src/RestWindows.tsx`
+- 状态：`src/state.ts`，唯一的事实来源；测试在 `src/state.test.ts` 与 `src/shell.test.ts`
 
 ## 四条硬规则
 
 1. **`src/shrine-html.ts` 是生成物，永远不手改。** 改 `test/rest-shrine.html` 或它引用的素材，然后 `python3 scripts/embed-shrine.py`。脚本会把 Three.js 和离线 3D 数据内联进页面并转义 `</script`。
 2. **`storage.json` 的两个 key 是冻结的**（`src/state.ts` 顶部的 `SETTINGS_KEY` / `STATS_KEY`，故意是不可读字符串）。改 key = 老用户的设置和当日统计清零。
-3. **`hideDockIcon` 有一条跨语言契约**：`saveSettings()` 往 storage 里另写一个裸 key `hideDockIcon`（`"1"` 隐藏 / `"0"` 显示），`native/dock_hide.m` 每 0.1s 轮询它来切 `NSApplication` 的 activation policy。缺省视为隐藏。改任一侧都要同时改另一侧。
+3. **`hideDockIcon` 有一条跨语言契约**：`saveSettings()` 往 storage 里另写一个裸 key `hideDockIcon`（`"1"` 隐藏 / `"0"` 显示），`native/dock_hide.m` 通过 kqueue vnode 监听 `storage.json` 变化来切 `NSApplication` 的 activation policy（仅在休息期间启用 0.15s 窗口锁定轮询）。缺省视为隐藏。改任一侧都要同时改另一侧。
 4. **休息锁也有一条跨语言契约**：`startRest / closeRestWindows` 通过 `publishRestBridge()` 写裸 key `restActive` / `restLock`（`"1"` / `"0"`）。`restLock` 为 1 时，`native/dock_hide.m` 把休息窗抬到 `NSScreenSaverWindowLevel`、禁用切屏、用本地事件监视器吞掉键盘和鼠标；`restActive` 归 0 时恢复原窗口层级与 activation 选项，并激活休息前最前面的那个 App。`settings.lockRest` 默认 true，存在设置 blob 里，不要和这两个瞬态 key 混用。
 
 ## 常用命令
 
 ```sh
 nsh check                                  # 类型检查（必须干净）
-nsh test                                   # 状态机测试，8 条
+nsh test                                   # 状态与壳层测试，17 条
 nsh package App.tsx --target macos         # 打包到 .nsh/out/香篆.app
 sh scripts/install-dock-hide.sh .nsh/out/香篆.app   # 注入 Dock 隐藏 + 休息锁 dylib（每次打包后都要跑）
 python3 scripts/embed-shrine.py            # 场景改动后重新生成 shrine-html.ts
@@ -43,7 +43,7 @@ open -g /Applications/香篆.app
 - 阶段：`idle → focus → rest → focus`，另有 `postpone`。`remainingMs` / `totalMs` 是派生量，不要另存一份时间。
 - **启动即专注**：`Shell.tsx` 在 `settingsLoaded()` 之后跑一次 `startFocus()`，用 `autoStarted` 保证只跑一次。
 - **暂停**只冻结 `focusEnd` 的推进：`paused` + `pausedAt`，恢复时把剩余时间重新挂到 `Date.now()`。暂停中改时长按剩余比例重算。
-- **空闲暂停**只影响专注。`native/dock_hide.m` 读系统键鼠空闲时间，将临近 5 分钟的空闲起点和最近一次已完成的空闲区间写到独立的 `input-activity/snapshot.json`。`Shell.tsx` 通过专注心跳把快照交给状态机。短离开恢复剩余时间，空闲达到专注时长后，收到输入再开始完整一轮。手动暂停优先。
+- **空闲暂停**只影响专注。`native/dock_hide.m` 读系统键鼠空闲时间，将临近 5 分钟的空闲起点和最近一次已完成的空闲区间写到独立的 `input-activity/snapshot.json`。`Shell.tsx` 在专注态的自适应调度里读取该快照交给状态机（空闲/隐藏期按分钟或数秒对齐，不常驻 250ms 心跳）。短离开恢复剩余时间，空闲达到专注时长后，收到输入再开始完整一轮。手动暂停优先。
 - **休息收尾由页面驱动**：`finishRest()` 置 `restFinishing` 并挂 `OUTRO_MS = 12000` 的兜底定时器；页面收到 `outro: true` 后立刻开始茶汤收尾，发回 `done` → `finishOutro()`。不要只靠 `remainingMs` 归零触发页面收尾。任何 `startRest / postponeRest / skipRest / stopCycle` 都必须先 `clearFinishTimer()`，否则旧定时器会打断新一轮。
 - **休息窗口的关闭有 generation 守卫**（`restGeneration`），`closeRestWindows` 是 420ms 延时 + 代次校验；新增的延时逻辑照抄这个模式。
 - **休息结束不显示主窗口**：`finishOutro / skipRest / postponeRest / stopCycle` 都不调用 `show()`；回到主界面只能由用户点托盘或菜单。休息结束时前台交给 `restActive` 归零后的原生逻辑。
@@ -53,7 +53,7 @@ open -g /Applications/香篆.app
 
 ## 休息页契约（宿主 ↔ 场景）
 
-`src/RestWindows.tsx` 每 250ms（或任一字段变化时）向页面 `postMessage` 一条 JSON：
+`src/RestWindows.tsx` 在状态变化及休息倒计时每秒推进时向页面 `postMessage` 一条 JSON：
 
 ```json
 { "type": "state", "remainingMs": 0, "totalMs": 90000, "progress": 0.4,
