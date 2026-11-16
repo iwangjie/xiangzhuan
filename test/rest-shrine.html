@@ -474,6 +474,55 @@
     display: block;
   }
 
+  .rest-confirmation {
+    width: min(380px, calc(100% - 32px));
+    margin: auto;
+    padding: 24px;
+    border: 1px solid var(--c-faint);
+    border-radius: 14px;
+    background: #211913;
+    color: var(--c-paper);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.42);
+  }
+  .rest-confirmation::backdrop {
+    background: rgba(10, 7, 5, 0.62);
+  }
+  .rest-confirmation h2 {
+    font-size: 20px;
+    line-height: 1.4;
+  }
+  .rest-confirmation p {
+    margin-top: 10px;
+    color: #d4c7b5;
+    font: 14px/1.6 var(--font-sans);
+  }
+  .rest-confirmation-actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 22px;
+  }
+  .rest-confirmation-actions button {
+    min-height: 36px;
+    padding: 6px 14px;
+    border: 1px solid var(--c-faint);
+    border-radius: 7px;
+    background: transparent;
+    color: var(--c-paper);
+    font: 13px var(--font-sans);
+    cursor: pointer;
+  }
+  .rest-confirmation-actions button:focus-visible {
+    outline: 2px solid var(--c-gold);
+    outline-offset: 2px;
+  }
+  #rest-confirm-accept {
+    border-color: var(--c-gold);
+    background: var(--c-gold);
+    color: #211913;
+  }
+
   @media (max-width: 820px) {
     #hud {
       padding: 26px 24px;
@@ -9373,7 +9422,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
         <div id="progress-fill"></div>
         <div id="progress-ember"></div>
       </div>
-      <div class="drag-hint" id="drag-hint">拖动环视 · 1/2/3 切换视角 · ESC 结束</div>
+      <div class="drag-hint" id="drag-hint">拖动环视 · 1/2/3 切换视角</div>
     </div>
 
     <div class="timer-cluster">
@@ -9382,13 +9431,22 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       <div id="display-name">Built-in Retina Display</div>
       <div class="actions-bar" id="actions-bar">
         <button class="action-link" id="btn-postpone" type="button">延后 5 分钟</button>
-        <button class="action-link" id="btn-skip" type="button">提前结束</button>
-        <span class="esc-hint" id="esc-hint">ESC 结束</span>
+        <button class="action-link" id="btn-skip" type="button">提前结束…</button>
+        <span class="esc-hint" id="esc-hint">Esc 跳过…</span>
       </div>
       <div id="forced-note">这炷香，要燃尽。</div>
     </div>
   </footer>
 </div>
+
+<dialog class="rest-confirmation" id="rest-confirmation" aria-labelledby="rest-confirm-title" aria-describedby="rest-confirm-note">
+  <h2 id="rest-confirm-title">提前结束这次休息？</h2>
+  <p id="rest-confirm-note">下次为强制休息，届时不能跳过或延后。</p>
+  <div class="rest-confirmation-actions">
+    <button id="rest-confirm-cancel" type="button" autofocus>继续休息</button>
+    <button id="rest-confirm-accept" type="button">确认跳过</button>
+  </div>
+</dialog>
 
 <script>
 (async function() {
@@ -9428,6 +9486,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     canPostpone: true,
     postponeMinutes: 5,
     canSkip: true,
+    actionConfirmation: null,
     forced: false,
     locked: false,
     label: '一炷香 · 静坐',
@@ -9455,6 +9514,10 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     actionsBar: document.getElementById('actions-bar'),
     btnPostpone: document.getElementById('btn-postpone'),
     btnSkip: document.getElementById('btn-skip'),
+    restConfirmation: document.getElementById('rest-confirmation'),
+    restConfirmTitle: document.getElementById('rest-confirm-title'),
+    restConfirmCancel: document.getElementById('rest-confirm-cancel'),
+    restConfirmAccept: document.getElementById('rest-confirm-accept'),
     escHint: document.getElementById('esc-hint'),
     dragHint: document.getElementById('drag-hint'),
     viewSwitcher: document.querySelector('.view-switcher'),
@@ -9496,11 +9559,18 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     dom.viewSwitcher.classList.toggle('hidden', locked);
     dom.replayButton.classList.toggle('hidden', appState.hostControlled);
     dom.dragHint.classList.toggle('hidden', locked);
-    if (!locked) {
-      dom.dragHint.textContent = showSkip
-        ? '拖动环视 · 1/2/3 切换视角 · ESC 结束'
-        : '拖动环视 · 1/2/3 切换视角';
+  }
+
+  function renderRestConfirmation() {
+    const confirmation = appState.actionConfirmation;
+    if (!confirmation || !appState.active || appState.locked || outroStarted) {
+      if (dom.restConfirmation.open) dom.restConfirmation.close();
+      return;
     }
+    const skip = confirmation.action === 'skip';
+    dom.restConfirmTitle.textContent = skip ? '提前结束这次休息？' : '延后这次休息？';
+    dom.restConfirmAccept.textContent = skip ? '确认跳过' : '确认延后';
+    if (!dom.restConfirmation.open) dom.restConfirmation.showModal();
   }
 
   let restStarted = false;
@@ -9541,6 +9611,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     if (typeof s.canPostpone === 'boolean') appState.canPostpone = s.canPostpone;
     if (Number.isFinite(s.postponeMinutes) && s.postponeMinutes > 0) appState.postponeMinutes = s.postponeMinutes;
     if (typeof s.canSkip === 'boolean') appState.canSkip = s.canSkip;
+    if ('actionConfirmation' in s) appState.actionConfirmation = s.actionConfirmation;
     if (typeof s.forced === 'boolean') appState.forced = s.forced;
     if (typeof s.locked === 'boolean') appState.locked = s.locked;
     if (typeof s.label === 'string' && s.label.trim()) appState.label = s.label.trim();
@@ -9563,6 +9634,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     if (appState.active && restStarted && appState.remainingMs <= 0 && !outroStarted) startOutro();
 
     renderHUD();
+    renderRestConfirmation();
     scheduleSceneFrame();
   };
 
@@ -12637,6 +12709,11 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
   window.addEventListener('keydown', e => {
     if (appState.locked) return;
     const key = String(e.key).toLowerCase();
+    if (key === 'escape' && e.repeat) {
+      e.preventDefault();
+      return;
+    }
+    if (dom.restConfirmation.open) return;
     if ((e.metaKey || e.ctrlKey) && key === 'r') {
       e.preventDefault();
       e.stopPropagation();
@@ -12671,6 +12748,16 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
   dom.btnPostpone.addEventListener('click', () => {
     if (appState.locked) return;
     if (!appState.forced && appState.canPostpone) emitHost('postpone');
+  });
+  function replyToRestConfirmation(reply) {
+    const confirmation = appState.actionConfirmation;
+    if (confirmation && dom.restConfirmation.open) emitHost(reply + ':' + confirmation.id);
+  }
+  dom.restConfirmAccept.addEventListener('click', () => replyToRestConfirmation('confirm'));
+  dom.restConfirmCancel.addEventListener('click', () => replyToRestConfirmation('cancel'));
+  dom.restConfirmation.addEventListener('cancel', e => {
+    e.preventDefault();
+    replyToRestConfirmation('cancel');
   });
 
   let lastW = 0;

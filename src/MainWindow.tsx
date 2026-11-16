@@ -49,7 +49,6 @@ import { Action, Card, Dot, KeyHint, Ring, SectionTitle, Segmented } from "./ui"
 const WORK_OPTIONS = [25, 45, 60] as const;
 const REST_OPTIONS = [60, 90, 120] as const;
 const POSTPONE_OPTIONS = [5, 10, 15] as const;
-const SKIP_OPTIONS = [5, 10, 15, 20] as const;
 
 export function MainWindow() {
   const win = currentWindow();
@@ -156,7 +155,7 @@ export function MainWindow() {
                       <Action label={`延后 ${settings().postponeMinutes} 分钟`} onPress={postponeRest} />
                     </If>
                     <If when={canSkipNow()}>
-                      <Action label="提前结束" variant="ghost" onPress={skipRest} />
+                      <Action label="提前结束…" variant="ghost" onPress={skipRest} />
                     </If>
                     <If when={!canPostponeNow() && !canSkipNow()}>
                       <Text class="text-[11px] tracking-[0.12em] text-warning">
@@ -164,9 +163,7 @@ export function MainWindow() {
                           ? "强制休息中"
                           : restInputLocked()
                             ? "锁定休息中"
-                            : settings().allowSkip && stats().skips >= settings().maxDailySkips
-                              ? "今日跳过已达上限"
-                              : "静候香尽"}
+                            : "静候香尽"}
                       </Text>
                     </If>
                   </View>
@@ -309,21 +306,6 @@ export function MainWindow() {
                   accessibilityLabel="允许跳过休息"
                   trackClass="h-6 w-11 rounded-full bg-muted p-0.5 transition-colors checked:bg-primary"
                   thumbClass="size-5 rounded-full bg-background shadow-sm transition-transform checked:translate-x-5"
-                />
-              </View>
-              <View class="h-px bg-border/60" />
-              <View style={{ gap: 8 }}>
-                <View class="flex-row items-center justify-between">
-                  <Text class="text-[12px] font-medium text-foreground">每日跳过上限</Text>
-                  <Text class="text-[10px] text-faint">
-                    今日已跳 {stats().skips} / {settings().maxDailySkips} 次
-                  </Text>
-                </View>
-                <Segmented
-                  label="每日跳过上限"
-                  value={settings().maxDailySkips}
-                  options={SKIP_OPTIONS.map((n) => ({ value: n, label: `${n} 次` }))}
-                  onChange={(maxDailySkips) => updateSettings({ maxDailySkips })}
                 />
               </View>
               <View class="h-px bg-border/60" />

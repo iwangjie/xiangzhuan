@@ -21,7 +21,7 @@ macOS 菜单栏的专注 / 休息提醒。用 nsh（AppKit 原生视图 + TSX）
 
 ```sh
 nsh check                                  # 类型检查（必须干净）
-nsh test                                   # 状态与壳层测试，17 条
+nsh test                                   # 状态与壳层测试
 nsh package App.tsx --target macos         # 打包到 .nsh/out/香篆.app
 sh scripts/install-dock-hide.sh .nsh/out/香篆.app   # 注入 Dock 隐藏 + 休息锁 dylib（每次打包后都要跑）
 python3 scripts/embed-shrine.py            # 场景改动后重新生成 shrine-html.ts
@@ -48,7 +48,7 @@ open -g /Applications/香篆.app
 - **休息窗口的关闭有 generation 守卫**（`restGeneration`），`closeRestWindows` 是 420ms 延时 + 代次校验；新增的延时逻辑照抄这个模式。
 - **休息结束不显示主窗口**：`finishOutro / skipRest / postponeRest / stopCycle` 都不调用 `show()`；回到主界面只能由用户点托盘或菜单。休息结束时前台交给 `restActive` 归零后的原生逻辑。
 - **锁定休息**：`restInputLocked() = phase() === "rest" && settings().lockRest`。锁定时 `canSkipNow` / `canPostponeNow` 恒为 false，`skipRest` / `postponeRest` 因此变成 no-op；页面收到 `locked: true` 后隐藏可交互控件。`lockRest` 默认 true，关掉才回到「可跳过 / 延后」的软休息。
-- 每日跳过上限走 `canSkipNow`（`stats().skips < maxDailySkips`），不要另开一条判断。
+- 跳过和第三次连续延后由状态机发起确认。每条确认请求有独立 ID，同一 ID 只能处理一次。取消时继续休息，休息结束时清除请求。
 - `canSkipNow` / `canPostponeNow` / `restForced` 是页面按钮的唯一依据，页面不自己算。
 
 ## 休息页契约（宿主 ↔ 场景）
@@ -58,11 +58,12 @@ open -g /Applications/香篆.app
 ```json
 { "type": "state", "remainingMs": 0, "totalMs": 90000, "progress": 0.4,
   "canPostpone": true, "canSkip": true, "forced": false, "locked": false,
+  "actionConfirmation": null,
   "outro": false, "active": true, "visitSeed": 1794362490000, "label": "把眼睛从屏幕上移开。",
   "display": "Built-in Retina Display" }
 ```
 
-页面通过 `window.nsh.postMessage` 回：`ready` / `skip` / `postpone` / `view:<name>` / `done`。
+页面通过 `window.nsh.postMessage` 回 `ready` / `skip` / `postpone` / `view:<name>` / `done`。当 `actionConfirmation` 为 `{ "id": 1, "action": "skip" }` 或对应的 `"postpone"` 时，页面显示确认框，回复 `confirm:<id>` 或 `cancel:<id>`。
 
 页面侧入口：`window.shrineState(state)`、`window.shrineView(name, silent)`。
 **倒计时一律用 `remainingMs`**，不要在页面里自己累加时间；`active` 由 false 变 true 才算新一轮（重抽挂轴、复位壶与杯）。

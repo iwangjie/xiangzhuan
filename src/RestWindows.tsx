@@ -11,6 +11,8 @@ import {
   phaseLine,
   postponeRest,
   remainingMs,
+  resolveRestAction,
+  restActionConfirmation,
   restEnd,
   restFinishing,
   restForced,
@@ -121,6 +123,7 @@ function RestScreen(props: { display: Display }) {
         canPostpone: canPostponeNow(),
         postponeMinutes: settings().postponeMinutes,
         canSkip: canSkipNow(),
+        actionConfirmation: restActionConfirmation(),
         forced: restForced() || restInputLocked(),
         locked: restInputLocked(),
         outro: restFinishing(),
@@ -155,7 +158,8 @@ function RestScreen(props: { display: Display }) {
       }}
       onMessage={(event) => {
         if (!view) return;
-        switch (String(event.data)) {
+        const message = String(event.data);
+        switch (message) {
           case "ready":
             post();
             break;
@@ -168,9 +172,11 @@ function RestScreen(props: { display: Display }) {
           case "done":
             finishOutro();
             break;
-          default:
-            // View switches stay inside the page.
+          default: {
+            const reply = /^(confirm|cancel):(\d+)$/.exec(message);
+            if (reply) resolveRestAction(Number(reply[2]), reply[1] === "confirm");
             break;
+          }
         }
       }}
     />

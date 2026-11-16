@@ -15,6 +15,8 @@ import {
   phaseLabel,
   postponeRest,
   remainingMs,
+  resolveRestAction,
+  restActionConfirmation,
   restEnd,
   restFinishing,
   restForced,
@@ -67,7 +69,7 @@ function trayMenu(): (MenuItem | false)[] {
         label: `延后 ${settings().postponeMinutes} 分钟`,
         onSelect: postponeRest,
       },
-      canSkipNow() && { label: "跳过休息", onSelect: skipRest },
+      canSkipNow() && { label: "跳过休息…", onSelect: skipRest },
       restInputLocked() && { label: "锁定休息中，无法提前结束", disabled: true },
       restForced() && { label: "强制休息中，无法提前结束", disabled: true },
     );
@@ -187,7 +189,9 @@ export function Shell() {
   keymap.bind(
     "escape",
     () => {
-      if (canSkipNow()) skipRest();
+      const confirmation = restActionConfirmation();
+      if (confirmation) resolveRestAction(confirmation.id, false);
+      else skipRest();
     },
     { when: "notEditing" },
   );

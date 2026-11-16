@@ -13,6 +13,8 @@ import {
   postponeRest,
   postpones,
   remainingMs,
+  resolveRestAction,
+  restActionConfirmation,
   restEnd,
   restForced,
   restFinishing,
@@ -27,11 +29,13 @@ import {
   startFocus,
   startRest,
   stats,
+  stopCycle,
   tick,
+  today,
 } from "./state";
 
 function reset(): void {
-  phase.set("idle");
+  stopCycle();
   focusEnd.set(null);
   restEnd.set(null);
   restOpen.set(false);
@@ -39,6 +43,7 @@ function reset(): void {
   forceNext.set(false);
   postpones.set(0);
   settings.set({ ...DEFAULT_SETTINGS, lockRest: false });
+  stats.set({ date: today(), focusMinutes: 0, rests: 0, skips: 0 });
 }
 
 function restFromFocus(): void {
@@ -84,16 +89,30 @@ test("enabling skipping unlocks rest actions from the default settings", () => {
   expect(canPostponeNow()).toBe(true);
 });
 
-test("three postponements make the next rest forced", () => {
+test("only the third postponement asks for confirmation and forces the next rest", () => {
   reset();
   restFromFocus();
-  for (let i = 0; i < 3; i++) {
+  for (let i = 0; i < 2; i++) {
     expect(canPostponeNow()).toBe(true);
     postponeRest();
+    expect(restActionConfirmation()).toBe(null);
     expect(phase()).toBe("postpone");
     startRest();
   }
+  postponeRest();
+  expect(restActionConfirmation()?.action).toBe("postpone");
+  expect(postpones()).toBe(2);
+  expect(forceNext()).toBe(false);
+  expect(phase()).toBe("rest");
+  resolveRestAction(restActionConfirmation()!.id, false);
+  expect(restActionConfirmation()).toBe(null);
+  expect(postpones()).toBe(2);
+  expect(phase()).toBe("rest");
+  postponeRest();
+  resolveRestAction(restActionConfirmation()!.id, true);
+  expect(phase()).toBe("postpone");
   expect(forceNext()).toBe(true);
+  startRest();
   expect(restForced()).toBe(true);
   expect(canPostponeNow()).toBe(false);
   expect(canSkipNow()).toBe(false);
@@ -105,17 +124,51 @@ test("three postponements make the next rest forced", () => {
   finishOutro();
   expect(forceNext()).toBe(false);
   expect(phase()).toBe("focus");
+  startRest();
+  expect(canSkipNow()).toBe(true);
 });
 
-test("skipping a rest forces the next one", () => {
+test("a skip requires confirmation and forces the next rest only once", () => {
   reset();
   restFromFocus();
-  expect(canSkipNow()).toBe(true);
   skipRest();
+  const first = restActionConfirmation()!;
+  expect(first.action).toBe("skip");
+  expect(phase()).toBe("rest");
+  expect(stats().skips).toBe(0);
+  expect(forceNext()).toBe(false);
+  skipRest();
+  expect(restActionConfirmation()?.id).toBe(first.id);
+  resolveRestAction(first.id, false);
+  expect(phase()).toBe("rest");
+  expect(stats().skips).toBe(0);
+  skipRest();
+  const second = restActionConfirmation()!;
+  resolveRestAction(first.id, true);
+  expect(restActionConfirmation()?.id).toBe(second.id);
+  expect(phase()).toBe("rest");
+  resolveRestAction(second.id, true);
+  resolveRestAction(second.id, true);
+  expect(stats().skips).toBe(1);
   expect(forceNext()).toBe(true);
   expect(phase()).toBe("focus");
   startRest();
   expect(restForced()).toBe(true);
+});
+
+test("rest expiry dismisses the pending confirmation even when the user confirms first", () => {
+  reset();
+  restFromFocus();
+  skipRest();
+  const confirmation = restActionConfirmation()!;
+  restEnd.set(Date.now() - 1);
+  resolveRestAction(confirmation.id, true);
+  expect(restActionConfirmation()).toBe(null);
+  expect(phase()).toBe("rest");
+  expect(restFinishing()).toBe(true);
+  expect(stats().skips).toBe(0);
+  expect(forceNext()).toBe(false);
+  finishOutro();
 });
 
 test("a rest with skipping off can only be postponed", () => {
@@ -231,12 +284,13 @@ test("idle tracking leaves manual pause and the active rest countdown alone", ()
   expect(restFinishing()).toBe(true);
 });
 
-test("the daily skip cap stops skipping", () => {
+test("the daily skip count no longer prevents an eligible skip", () => {
   reset();
-  settings.update((s) => ({ ...s, maxDailySkips: 1 }));
-  stats.update((s) => ({ ...s, skips: 1 }));
+  stats.update((s) => ({ ...s, skips: 24 }));
   restFromFocus();
-  expect(canSkipNow()).toBe(false);
+  expect(canSkipNow()).toBe(true);
   skipRest();
-  expect(phase()).toBe("rest");
+  resolveRestAction(restActionConfirmation()!.id, true);
+  expect(stats().skips).toBe(25);
+  expect(phase()).toBe("focus");
 });
