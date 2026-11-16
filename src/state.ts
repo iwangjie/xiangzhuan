@@ -8,7 +8,6 @@ export interface Settings {
   restSeconds: number;
   postponeMinutes: number;
   allowSkip: boolean;
-  maxDailySkips: number;
   startAtLogin: boolean;
   /** Keep the app out of the Dock (menu bar only). */
   hideDockIcon: boolean;
@@ -28,7 +27,6 @@ export const DEFAULT_SETTINGS: Settings = {
   restSeconds: 90,
   postponeMinutes: 5,
   allowSkip: true,
-  maxDailySkips: 10,
   startAtLogin: false,
   hideDockIcon: true,
   lockRest: true,
@@ -67,6 +65,11 @@ export const forceNext = signal(false);
 export const postpones = signal(0);
 export const loginError = signal<string | null>(null);
 
+type RestAction = "skip" | "postpone";
+const pendingRestAction = signal<{ id: number; action: RestAction } | null>(null);
+export const restActionConfirmation = computed(() => pendingRestAction());
+let nextConfirmationId = 0;
+
 /** What the next rest returns to, once it is over. */
 let restReturn: "focus" | "idle" = "focus";
 /** Guards the delayed close of the rest windows against a new rest. */
@@ -78,6 +81,7 @@ let finishTimer: number | null = null;
 
 const OUTRO_MS = 12000;
 const FOCUS_IDLE_MS = 5 * 60_000;
+const POSTPONES_BEFORE_FORCED_REST = 3;
 
 export interface InputActivity {
   idleSince: number | null;
@@ -163,12 +167,7 @@ export const phaseLine = computed(() => {
 });
 
 export const canSkipNow = computed(
-  () =>
-    phase() === "rest" &&
-    !restFinishing() &&
-    skipEnabled() &&
-    !restForced() &&
-    stats().skips < Math.max(0, settings().maxDailySkips),
+  () => phase() === "rest" && !restFinishing() && skipEnabled() && !restForced(),
 );
 export const canPostponeNow = computed(
   () => phase() === "rest" && !restFinishing() && !restInputLocked() && !restForced(),
@@ -208,8 +207,8 @@ export function loadSettings(): void {
   void Storage.getItem(SETTINGS_KEY)
     .then((raw) => {
       if (!raw) return;
-      const next = { ...DEFAULT_SETTINGS, ...(JSON.parse(raw) as Partial<Settings>) };
-      settings.set(next);
+      const saved = Object.entries(JSON.parse(raw)).filter(([key]) => Object.hasOwn(DEFAULT_SETTINGS, key));
+      settings.set({ ...DEFAULT_SETTINGS, ...Object.fromEntries(saved) });
     })
     .catch(() => {})
     .finally(() => settingsLoaded.set(true));
@@ -239,7 +238,10 @@ export function saveStats(): void {
 
 export function updateSettings(patch: Partial<Settings>): void {
   settings.update((s) => ({ ...s, ...patch }));
-  if (phase() === "rest") publishRestBridge(true);
+  if (phase() !== "rest") return;
+  const confirmation = pendingRestAction();
+  if (confirmation && !canPerformRestAction(confirmation.action)) pendingRestAction.set(null);
+  publishRestBridge(true);
 }
 
 export function setAllowSkip(allowSkip: boolean): void {
@@ -302,6 +304,7 @@ export function setWorkMinutes(minutes: number): void {
 
 export function startRest(completedWork = false): void {
   if (phase() === "rest") return;
+  pendingRestAction.set(null);
   if (completedWork) addFocusMinutes(settings().workMinutes);
   restReturn = phase() === "idle" ? "idle" : "focus";
   paused.set(false);
@@ -343,6 +346,7 @@ export function finishRest(): void {
   // pours a cup, the room fades to black, then it reports "done". The 12 s
   // timer only ends a rest whose page never reports back.
   restFinishing.set(true);
+  pendingRestAction.set(null);
   restEnd.set(null);
   paused.set(false);
   pausedAt = null;
@@ -363,14 +367,47 @@ export function finishOutro(): void {
   saveStats();
 }
 
+function canPerformRestAction(action: RestAction): boolean {
+  return action === "skip" ? canSkipNow() : canPostponeNow();
+}
+
+function requestRestAction(action: RestAction): void {
+  if (!canPerformRestAction(action) || pendingRestAction()) return;
+  if (action === "postpone" && postpones() + 1 < POSTPONES_BEFORE_FORCED_REST) {
+    applyPostponement();
+    return;
+  }
+  pendingRestAction.set({ id: ++nextConfirmationId, action });
+}
+
 export function postponeRest(): void {
-  if (!canPostponeNow()) return;
+  requestRestAction("postpone");
+}
+
+export function skipRest(): void {
+  requestRestAction("skip");
+}
+
+export function resolveRestAction(id: number, confirmed: boolean): void {
+  const confirmation = pendingRestAction();
+  if (confirmation?.id !== id) return;
+  batch(() => {
+    pendingRestAction.set(null);
+    if (!confirmed) return;
+    tick();
+    if (!canPerformRestAction(confirmation.action)) return;
+    if (confirmation.action === "skip") applySkip();
+    else applyPostponement();
+  });
+}
+
+function applyPostponement(): void {
   clearFinishTimer();
   paused.set(false);
   pausedAt = null;
   const n = postpones() + 1;
   postpones.set(n);
-  if (n >= 3) forceNext.set(true);
+  if (n >= POSTPONES_BEFORE_FORCED_REST) forceNext.set(true);
   restEnd.set(null);
   restForced.set(false);
   closeRestWindows();
@@ -378,8 +415,7 @@ export function postponeRest(): void {
   phase.set("postpone");
 }
 
-export function skipRest(): void {
-  if (!canSkipNow()) return;
+function applySkip(): void {
   clearFinishTimer();
   forceNext.set(true);
   paused.set(false);
@@ -394,6 +430,7 @@ export function skipRest(): void {
 
 export function stopCycle(): void {
   clearFinishTimer();
+  pendingRestAction.set(null);
   paused.set(false);
   pausedAt = null;
   idlePausedAt.set(null);

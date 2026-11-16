@@ -6,6 +6,19 @@ function restWindowId(app: App): string {
   return `rest:${app.window("main").state()?.display ?? "1"}`;
 }
 
+test("loading legacy settings drops the daily cap and preserves current settings", async () => {
+  const app = await open("../App.tsx", {
+    platform: "macos",
+    clock: {},
+    storage: { [SETTINGS]: JSON.stringify({ workMinutes: 45, maxDailySkips: 5, lockRest: false }) },
+  });
+
+  await app.waitUntil(() => !("maxDailySkips" in JSON.parse(app.storage()[SETTINGS])));
+  const saved = JSON.parse(app.storage()[SETTINGS]);
+  expect(saved.workMinutes).toBe(45);
+  expect(saved.lockRest).toBe(false);
+});
+
 test("rest windows stay hidden through focus and only show at the rest", async () => {
   const app = await open("../App.tsx", {
     platform: "macos",
