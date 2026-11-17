@@ -82,16 +82,33 @@ hdiutil create -volname "香篆" -srcfolder /tmp/xiangzhuan-dmg -ov -format UDZO
 
 未签名应用首次打开如被 Gatekeeper 拦下：右键「打开」，或 `xattr -d com.apple.quarantine /Applications/香篆.app`。
 
+## 发布与更新
+
+推送 `v*` tag 触发 `.github/workflows/release.yml`，两个 runner 各打一份：
+
+| runner | 架构 | 归档 |
+|---|---|---|
+| `macos-15` | arm64 | `xiangzhuan-<version>-macos-aarch64.tar.gz` |
+| `macos-15-intel` | x86_64 | `xiangzhuan-<version>-macos-x86_64.tar.gz` |
+
+归档前必须跑 `scripts/install-dock-hide.sh`，否则 OTA 下载到的新外壳会丢掉 Dock 隐藏与休息锁。release 资产是同名 DMG（`-arm64` / `-x64`）、`com.iwangjie.xiangzhuan-<build>.nshpkg`、`latest.json`、`latest.json.sig`。
+
+密钥在仓库外 `~/xiangzhuan-keys/`：`root.secret` 离线保管，`release.secret`、`release.cert`、`update.secret` 写进 GitHub secrets（`NSH_RELEASE_KEY`、`NSH_RELEASE_CERT`、`NSH_UPDATE_KEY`）。`nsh.json` 只放公钥：`updater.publicKey` 签 manifest，`updater.packages.roots` 认证签包的 release 密钥。
+
+每次发版同时递增 `version` 与 `build`。已安装外壳只接受 build 更高的包，回滚保护会记住已接受过的最高 build。应用启动 3 秒后自动检查（每 6 小时一次）：先找 OTA 包，没有再找整包；「规则 → 版本」可手动检查并重启进入新包。
+
 ## 结构
 
 ```text
 nsh.json                 应用名、bundle id、窗口、Info.plist、能力声明
-theme.json               暖纸 / 墨 / 朱砂主题 token
+theme.json               中性灰主题 token
 App.tsx                  入口：主窗口 + 休息窗口 + 菜单栏 Shell
 src/state.ts             计时状态机、设置、统计、持久化
 src/Shell.tsx            托盘图标与菜单、应用菜单、快捷键、自适应调度
-src/MainWindow.tsx       主界面
+src/MainWindow.tsx       菜单栏弹窗（计时 / 节奏 / 规则）
 src/RestWindows.tsx      多显示器全屏休息屏（WebView 宿主）
+src/popover.ts           弹窗吸附到菜单栏图标的位置计算
+src/updates.ts           OTA 包 / 整包更新检查与重启
 src/ui.tsx               按钮、分段选择、开关、卡片等设计系统
 src/login-item.ts        登录时启动（LaunchAgent）
 src/shrine-html.ts       休息屏页面（生成物，勿手改）
