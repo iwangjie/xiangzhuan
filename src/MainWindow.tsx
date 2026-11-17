@@ -508,14 +508,7 @@ export function MainWindow() {
         </Scroll>
 
         <View class="h-px bg-border" />
-        <View class="h-9 flex-row items-center justify-between px-3">
-          <View class="flex-row items-center gap-1.5">
-            <Text class="text-[10px] text-muted-foreground">
-              今日 {stats().focusMinutes} 分钟
-            </Text>
-            <Text class="text-[10px] text-faint">·</Text>
-            <Text class="text-[10px] text-faint">香篆</Text>
-          </View>
+        <View class="h-9 flex-row items-center justify-end px-3">
           <Button
             onPress={() => Application.quit()}
             class="rounded-[7px] px-2 py-1 transition duration-150 hover:bg-accent active:scale-95"

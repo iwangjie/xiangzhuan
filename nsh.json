@@ -1,8 +1,8 @@
 {
   "name": "香篆",
   "id": "com.iwangjie.xiangzhuan",
-  "version": "1.3.4",
-  "build": 12,
+  "version": "1.3.5",
+  "build": 13,
   "icon": "assets/icon.png",
   "appearance": "light",
   "theme": "theme.json",
