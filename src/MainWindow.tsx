@@ -171,6 +171,8 @@ export function MainWindow() {
   const tabButton = (id: TabId, label: string) => (
     <Button
       onPress={() => tab.set(id)}
+      accessibilityLabel={label}
+      testID={`tab-${id}`}
       class={`flex-1 items-center justify-center rounded-[8px] py-1.5 transition duration-150 ${
         tab() === id
           ? "bg-card text-foreground shadow-sm"
