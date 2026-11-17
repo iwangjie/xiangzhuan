@@ -1415,6 +1415,7 @@ function createFishBodyRig(THREE, sourceBody, tailMesh, rootGroup) {
   boneRoot.add(boneRightFoot);
 
   const cupArm = createFishCupArm(THREE, boneChest, REST_CHEST_POS, rootGroup);
+  const freeArm = createFishCupArm(THREE, boneChest, REST_CHEST_POS, rootGroup, -1);
   const bones = [boneRoot, boneChest, boneHead, boneHair, boneLeftFoot, boneRightFoot, ...cupArm.bones];
   const shinRestRotation = new THREE.Quaternion();
   const shinPoint = new THREE.Vector3();
@@ -1550,6 +1551,24 @@ function createFishBodyRig(THREE, sourceBody, tailMesh, rootGroup) {
 
   if (geometry.userData.hasShinWeights) attachFishShins(geometry, firstShin);
 
+  // The opposite sleeve is part of the original scan. Fold its distal
+  // portion under the shoulder when the articulated sleeve takes over.
+  const bindPosition = geometry.attributes.position;
+  const bindColor = geometry.attributes.color;
+  const waveTuck = geometry.attributes.aWaveTuck;
+  const sleeveTuck = new Float32Array(vertCount * 2);
+  const sleeveColor = new THREE.Color();
+  for (let i = 0; i < vertCount; i++) {
+    const y = bindPosition.getY(i);
+    sleeveTuck[i * 2] = waveTuck.getX(i);
+    if (y < -.11 && y > -.26 && bindPosition.getX(i) < -.14) {
+      sleeveColor.fromBufferAttribute(bindColor, i);
+      const sleeve = freeArm.skin(bindPosition.getX(i), y, bindPosition.getZ(i), sleeveColor);
+      sleeveTuck[i * 2 + 1] = (sleeve?.[0] ?? 0) * smoothstep(-.105, -.205, y);
+    }
+  }
+  geometry.setAttribute('aWaveTuck', new THREE.BufferAttribute(sleeveTuck, 2));
+
   // --- SkinnedMesh & Skeleton Setup ---
   const material = sourceBody.material;
   const skinnedBody = new THREE.SkinnedMesh(geometry, material);
@@ -1576,8 +1595,8 @@ function createFishBodyRig(THREE, sourceBody, tailMesh, rootGroup) {
   rootGroup.add(skinnedBody);
 
   // --- Tail Pivot Architecture ---
-  // Tail rigid pivot at (0.04, -0.31, -0.06)
-  const tailPivotPos = new THREE.Vector3(0.04, -0.31, -0.06);
+  // Mirrored tail rigid pivot at (-0.04, -0.31, -0.06)
+  const tailPivotPos = new THREE.Vector3(-0.04, -0.31, -0.06);
   const tailPivot = new THREE.Group();
   tailPivot.name = "rig_tailPivot";
   tailPivot.position.copy(tailPivotPos);
@@ -1586,6 +1605,7 @@ function createFishBodyRig(THREE, sourceBody, tailMesh, rootGroup) {
     tailMesh.parent.remove(tailMesh);
   }
   tailMesh.position.sub(tailPivotPos);
+  tailMesh.scale.set(-1, 1, 1);
   tailPivot.add(tailMesh);
   rootGroup.add(tailPivot);
 
@@ -1618,6 +1638,7 @@ function createFishBodyRig(THREE, sourceBody, tailMesh, rootGroup) {
     tailPivot.rotation.set(0, 0, 0);
     tailMesh.material.uniforms.uTailBend.value = 0;
     cupArm.reset();
+    freeArm.reset();
 
     skinnedBody.updateMatrixWorld(true);
   }
@@ -1682,6 +1703,7 @@ function createFishBodyRig(THREE, sourceBody, tailMesh, rootGroup) {
     tailPivot.rotation.set(-chestPitch * 0.3, 0, chestRoll * 0.2);
     tailMesh.material.uniforms.uTailBend.value = tailAngle;
     cupArm.reset();
+    freeArm.reset();
 
     skinnedBody.updateMatrixWorld(true);
   }
@@ -1700,6 +1722,7 @@ function createFishBodyRig(THREE, sourceBody, tailMesh, rootGroup) {
     getSoleLift: getSoleLift,
     feetRest: {left:REST_LFOOT_POS, right:REST_RFOOT_POS},
     cupArm,
+    freeArm,
     diagnostics: Object.freeze({
       vertexCount: vertCount,
       boneCount: bones.length,
@@ -2000,7 +2023,61 @@ vec4 fishPaintFaceLids(sampler2D art, vec2 uv, vec2 gaze, vec2 eyeFocus, vec4 fa
 
 vec4 fishPaintFace(sampler2D art, vec2 uv, vec2 gaze, vec2 eyeFocus, vec4 face, FishPortraitFootprint footprint) {
   float lidCoverage;
-  return fishPaintFaceLids(art,uv,gaze,eyeFocus,face,footprint,true,lidCoverage);
+  vec4 base = fishPaintFaceLids(art,uv,gaze,eyeFocus,face,footprint,true,lidCoverage);
+  vec2 p = uv * vec2(174.0, 244.0);
+
+  // 左右脸颊双侧柔和暖粉腮红（中心坐标 (46.2, 104.1) 与 (87.1, 103.8)）
+  vec2 leftCheek = vec2(46.2, 104.1);
+  vec2 rightCheek = vec2(87.1, 103.8);
+  float dLeft = length((p - leftCheek) * vec2(1.0, 1.25));
+  float dRight = length((p - rightCheek) * vec2(1.0, 1.25));
+  float blush = (2.0-smoothstep(0.3,8.4,dLeft)-smoothstep(0.3,8.4,dRight)) * 0.22;
+
+  // 面中/鼻翼温和弧度微影，不产生突兀斑块或深色黑点
+  vec2 noseCenter = vec2(66.5, 101.5);
+  float dNose = length((p - noseCenter) * vec2(1.0, 1.8));
+  float noseShade = (1.0-smoothstep(0.5,4.9,dNose))*0.035;
+
+  // 保护眼眶与上部区域，仅作用于肤色部分
+  float eyeExclude = smoothstep(101.1,103.6,p.y)*(1.0-smoothstep(110.9,115.5,p.y));
+  float skinGuard = smoothstep(0.45,0.87,base.r)
+    * smoothstep(0.027,0.133,base.r-base.b)*(1.0-smoothstep(0.02,0.12,lidCoverage));
+
+  vec3 blushColor = vec3(1.025,0.909,0.916);
+  vec3 resultRgb = mix(base.rgb, base.rgb * blushColor, blush * eyeExclude * skinGuard);
+  resultRgb *= (1.0 - noseShade * eyeExclude * skinGuard);
+
+  return vec4(resultRgb, base.a);
+}
+
+vec3 fishPaintPlayfulFace(vec3 color, vec2 p, vec2 gaze, vec4 lids, vec3 acting, FishPortraitFootprint footprint) {
+  if (dot(acting,acting)<0.000001 || p.x<34.0 || p.x>102.0 || p.y<76.0 || p.y>115.0) return color;
+  float skin = smoothstep(0.48,0.80,color.r)*smoothstep(0.028,0.13,color.r-color.b);
+  float cheekDistance=min(length((p-vec2(45.1,106.7))/vec2(8.2,4.1)),
+    length((p-vec2(89.2,106.6))/vec2(8.9,4.8)));
+  float cheek=1.0-smoothstep(0.21,1.12,cheekDistance);
+  color=mix(color,color*vec3(1.04,0.81,0.86),cheek*skin*acting.x*0.62);
+
+  bool right=p.x>66.0;
+  float side=right ? 1.0 : -1.0;
+  float aa=clamp(length(footprint.dx*fishPortraitSize)+length(footprint.dy*fishPortraitSize),0.22,1.20);
+  if (p.y>87.4 && p.y<102.7 && acting.y>0.0) {
+    vec2 center=right ? vec2(85.1,94.1) : vec2(47.5,94.2);
+    vec2 point=abs((p-center-gaze*vec2(1.31,0.91))/vec2(4.15,4.65));
+    float distance=sqrt(point.x)+sqrt(point.y)-1.05;
+    float star=1.0-smoothstep(-0.04,0.075+aa*0.07,distance);
+    float iris=smoothstep(0.015,0.10,color.b-color.r);
+    float open=1.0-smoothstep(0.09,0.55,right ? lids.y : lids.x);
+    color=mix(color,vec3(1.0,0.66,0.17),star*iris*open*acting.y*0.97);
+  }
+  if (p.y<86.5 && abs(acting.z)>0.0) {
+    float x=(p.x-(right ? 85.2 : 47.1))*side;
+    float line=80.4+0.037*x*x+max(-acting.z,0.0)*(-0.26*x+1.4)-max(acting.z,0.0)*1.18;
+    float brow=(1.0-smoothstep(0.34,0.73+aa*0.32,abs(p.y-line)))
+      * (1.0-smoothstep(3.9,7.7,abs(x)));
+    color=mix(color,vec3(0.085,0.057,0.105),brow*skin*abs(acting.z)*0.76);
+  }
+  return color;
 }
 `;
 
@@ -2557,7 +2634,10 @@ vec3 fishShadeTresses(vec3 color, vec3 detail, vec3 p, vec3 bindN, vec3 viewN,
   float crownRoot=fishRearRootMask(p);
   float rootHeight=mix(0.218,0.294,smoothstep(0.218,0.374,p.y));
   float guideHeight=mix(p.y,rootHeight,crownRoot);
-  vec2 uv=vec2((theta+1.67)/3.34,(0.30-guideHeight)/(0.61*1.24));
+  // Asymmetric staged lock paths with long S curvature along rear length
+  float sBend=(0.056*sin(along*5.4+p.x*3.2)+0.030*sin(along*9.6-0.75))*smoothstep(0.12,0.88,along);
+  float stagedTheta=theta+sBend*(1.0-0.58*crownRoot);
+  vec2 uv=vec2((stagedTheta+1.67)/3.34,(0.30-guideHeight)/(0.61*1.24));
   #if FISH_TEXTURE_GRADIENTS
   vec2 guideDx=dFdx(uv), guideDy=dFdy(uv);
   #else
@@ -2613,35 +2693,41 @@ vec3 fishShadeTresses(vec3 color, vec3 detail, vec3 p, vec3 bindN, vec3 viewN,
   float bounced=fishRoomDiffuse(N,fill,0.58);
   float root=smoothstep(0.08,0.48,along);
   float ends=smoothstep(0.54,0.99,along);
-  float crest=smoothstep(0.28,0.90,0.76*guide.r+0.24*detail.y);
+  // Wider graduated crests with steeper falloff into seams
+  float rawCrest=0.76*guide.r+0.24*detail.y;
+  float crest=pow(smoothstep(0.21,0.86,rawCrest),0.82);
   float groove=guide.b;
   float shoulder=guide.a*(0.30+0.70*light);
-  // Deep indigo between overlapping locks, cooler blue on the curled tips.
-  // Match the bangs' indigo roots and blue curls, with a distinct
-  // occlusion tone under each overlapping lock.
-  vec3 shadow=mix(vec3(0.018,0.025,0.084),vec3(0.039,0.090,0.248),ends);
-  vec3 lift=mix(vec3(0.064,0.101,0.304),vec3(0.176,0.356,0.680),ends);
-  float tone=0.25+0.51*crest+0.18*light+0.06*bounced;
+  // Restrained deep indigo crown and roots, subdued cool cornflower near tips
+  vec3 crownIndigo=vec3(0.013,0.018,0.062);
+  vec3 shadow=mix(crownIndigo,vec3(0.034,0.082,0.230),ends);
+  vec3 lift=mix(vec3(0.058,0.094,0.280),vec3(0.185,0.345,0.635),ends);
+  float tone=0.23+0.54*crest+0.17*light+0.06*bounced;
   vec3 palette=mix(shadow,lift,tone);
-  vec3 shade=mix(color,palette,0.49+0.43*root);
-  // Emphasize the painted joins through the body of the rear locks.
+  vec3 shade=mix(color,palette,0.52+0.42*root);
+  // Emphasize painted joins and deepen seam contrast between locks
   float inkRegion=smoothstep(0.27,0.33,uv.x)*(1.0-smoothstep(0.69,0.745,uv.x))
     * smoothstep(0.13,0.24,uv.y)*(1.0-smoothstep(0.68,0.88,uv.y));
   float rearGroom=max(broadRear*rear,crownRoot)*(1.0-smoothstep(0.09,0.50,frontCoverage));
-  shade=mix(shade,mix(shadow,lift,0.17+0.62*crest+0.13*light+0.06*bounced),rearGroom*0.81);
-  shade*=0.92+0.16*crest+0.12*light+0.06*bounced
-    -(0.46+max(0.24*inkRegion,0.39*rearGroom))*groove;
-  float seamInk=rearGroom*smoothstep(0.50,0.83,groove);
-  shade=mix(shade,mix(vec3(0.017,0.025,0.084),vec3(0.032,0.058,0.157),ends),seamInk*0.67);
+  shade=mix(shade,mix(shadow,lift,0.16+0.64*crest+0.13*light+0.06*bounced),rearGroom*0.82);
+  shade*=0.90+0.18*crest+0.12*light+0.06*bounced
+    -(0.56+max(0.28*inkRegion,0.46*rearGroom))*groove;
+  float seamInk=rearGroom*smoothstep(0.44,0.80,groove);
+  shade=mix(shade,mix(vec3(0.009,0.013,0.046),vec3(0.022,0.044,0.128),ends),seamInk*0.82);
 
-  float reflection=smoothstep(0.08,0.83,guide.g)*(0.40+0.60*light)*(1.0-0.85*groove);
-  shade+=vec3(0.115,0.171,0.306)*reflection;
-  shade+=vec3(0.018,0.039,0.076)*shoulder*(1.0-0.73*groove);
-  vec3 sheen=fishHairLobe(N,flow,V,key,fill)*(0.18+0.47*shoulder)*(1.0-0.75*groove);
+  // Calm satin finish on crown, suppressing harsh specular
+  float satinCalm=1.0-0.62*crownRoot;
+  float reflection=smoothstep(0.08,0.83,guide.g)*(0.35+0.55*light)*(1.0-0.88*groove)*satinCalm;
+  shade+=vec3(0.095,0.142,0.258)*reflection;
+  shade+=vec3(0.016,0.034,0.068)*shoulder*(1.0-0.78*groove)*satinCalm;
+  vec3 sheen=fishHairLobe(N,flow,V,key,fill)*(0.15+0.40*shoulder)*(1.0-0.80*groove)*satinCalm;
   float facing=max(0.0,dot(N,V));
   float rim=(1.0-smoothstep(0.03,0.48,facing))*smoothstep(0.15,0.74,bounced);
-  shade+=vec3(0.009,0.018,0.037)*rim*ends;
-  float weight=1.0-pow(1.0-clamp(coverage,0.0,1.0),1.65);
+  shade+=vec3(0.008,0.016,0.034)*rim*ends;
+  // Preserve crisp white edge of lace band
+  float laceGuard=smoothstep(0.36,0.64,min(min(color.r,color.g),color.b));
+  float effectiveCoverage=coverage*(1.0-0.92*laceGuard);
+  float weight=1.0-pow(1.0-clamp(effectiveCoverage,0.0,1.0),1.65);
   return mix(color,shade+sheen,weight);
 }
 `;
@@ -3153,20 +3239,63 @@ function createFishTailMesh(THREE, {isSideLight = false, isWireframe = false, ro
       varying float vTailUp;
 
       void main() {
+        vec3 rawPos = position;
+        float flukeT = clamp((rawPos.x - 0.172) / 0.110, 0.0, 1.0);
+        float compact = flukeT*flukeT*(3.0-2.0*flukeT)*0.38;
+        float compactSlope = 6.0*flukeT*(1.0-flukeT)*0.38/0.110;
+        vec2 flukeDelta = rawPos.yz*vec2(-0.18, -0.26) + vec2(-0.058, -0.016);
+        rawPos.yz += compact * flukeDelta;
+        vec2 flukeSlope = compactSlope * flukeDelta;
+
+        // Continuous smooth curved stem matching approved turnaround reference:
+        // Slender dark root emerges from under right skirt hem, dips softly below the hem,
+        // then curves gently upward in a continuous C toward the two upright blue lobes.
+        // No root translation at x ~ 0.028; smooth derivative avoids kinks and preserves far lobes.
+        float stemU = clamp((position.x - 0.028) / 0.238, 0.0, 1.0);
+        float stemDip = stemU * stemU * (1.0 - stemU) * (1.0 - stemU) * 16.0;
+        float dStemDip = (32.0 * stemU * (1.0 - stemU) * (1.0 - 2.0 * stemU)) / 0.238;
+        float stemRise = stemU * stemU * (3.0 - 2.0 * stemU);
+        float dStemRise = (6.0 * stemU * (1.0 - stemU)) / 0.238;
+
+        float stemBowY = -0.057 * stemDip + 0.029 * stemRise;
+        float stemBowYSlope = -0.057 * dStemDip + 0.029 * dStemRise;
+        float stemBowZ = -0.014 * stemRise - 0.047 * stemDip;
+        float stemBowZSlope = -0.014 * dStemRise - 0.047 * dStemDip;
+        float stemBowX = 0.048 * stemRise;
+        float stemBowXSlope = 0.048 * dStemRise;
+
+        rawPos += vec3(stemBowX, stemBowY, stemBowZ);
+
+        // Slender transition near flank (thinner root diameter exiting under skirt hem)
+        float flankU = clamp((position.x - 0.080) / 0.143, 0.0, 1.0);
+        float flankTaper = flankU*(1.0-flankU);
+        float flankThin = 7.52*flankTaper*flankTaper;
+        float flankThinSlope = 15.04*flankTaper*(1.0-2.0*flankU)/0.143;
+        vec2 flankSlope = vec2(-0.45, -0.30);
+        vec2 stemAxis = vec2(-0.323,-0.064) + flankSlope*(position.x-0.085)
+          + vec2(stemBowY,stemBowZ);
+        vec2 originalSection = rawPos.yz - stemAxis;
+        rawPos.yz -= flankThin * (rawPos.yz - stemAxis);
+
         float t = clamp((position.x - 0.118) / 0.135, 0.0, 1.0);
         float angle = uTailBend * t*t*(3.0-2.0*t);
         float slope = uTailBend * 6.0*t*(1.0-t) / 0.135;
         float c = cos(angle), s = sin(angle);
-        vec2 fromHinge = position.xz - vec2(0.118, -0.080);
+        vec2 fromHinge = rawPos.xz - vec2(0.118, -0.080);
         vec3 bent = vec3(0.118 + c*fromHinge.x + s*fromHinge.y,
-          position.y, -0.080 - s*fromHinge.x + c*fromHinge.y);
+          rawPos.y, -0.080 - s*fromHinge.x + c*fromHinge.y);
 
-        // The gradient of the bend varies along X, so rotate the tangent basis
-        // with its derivative before transforming the corresponding normal.
-        vec3 jx = vec3(c + slope*(-s*fromHinge.x + c*fromHinge.y), 0.0,
-          -s + slope*(-c*fromHinge.x - s*fromHinge.y));
-        vec3 jy = vec3(0.0, 1.0, 0.0);
-        vec3 jz = vec3(s, 0.0, c);
+        // Transform tangent basis with updated stem bow, flank thinning, and hinge derivatives
+        float xSlope = 1.0 + stemBowXSlope;
+        vec2 sectionSlope = vec2(stemBowYSlope,stemBowZSlope)
+          + mix(flukeSlope,flankSlope,flankThin) - flankThinSlope*originalSection;
+        float ySlope = sectionSlope.x;
+        float zSlope = sectionSlope.y;
+        vec3 jx = vec3(c*xSlope + s*zSlope + slope*(-s*fromHinge.x + c*fromHinge.y),
+          ySlope,
+          -s*xSlope + c*zSlope + slope*(-c*fromHinge.x - s*fromHinge.y));
+        vec3 jy = vec3(0.0, (1.0 - 0.18*compact) * (1.0 - flankThin), 0.0);
+        vec3 jz = vec3(s, 0.0, c) * ((1.0 - 0.26*compact) * (1.0 - flankThin));
         vec3 n = cross(jy, jz)*normal.x + cross(jz, jx)*normal.y + cross(jx, jy)*normal.z;
         vec4 view = modelViewMatrix * vec4(bent, 1.0);
         vTailBind = position;
@@ -3199,7 +3328,15 @@ function createFishTailMesh(THREE, {isSideLight = false, isWireframe = false, ro
         float contact = (1.0 - smoothstep(0.015, 0.092, contactDistance))
           * (1.0 - smoothstep(0.154, 0.228, vTailBind.x));
         float shelter = contact * (0.85 + 0.15 * clamp(vTailUp, 0.0, 1.0));
-        vec3 hue = mix(vTailColor, vec3(0.029,0.045,0.104), shelter * 0.46);
+        // Deepen pigment at root and flap edges, transitioning into compact cornflower blue fluke
+        float rootWeight = 1.0 - smoothstep(0.118, 0.198, vTailBind.x);
+        float flukeWeight = smoothstep(0.178, 0.272, vTailBind.x);
+        float edgeDist = length(vTailBind.yz - vec2(-0.350, -0.087));
+        float flapEdge = flukeWeight * smoothstep(0.027, 0.084, edgeDist);
+        vec3 baseHue = mix(vTailColor, vec3(0.052, 0.128, 0.370), flukeWeight * 0.84);
+        baseHue = mix(baseHue, vec3(0.015, 0.022, 0.080), rootWeight * 0.92);
+        baseHue = mix(baseHue, vec3(0.026, 0.056, 0.185), flapEdge * 0.68);
+        vec3 hue = mix(baseHue, vec3(0.020, 0.032, 0.088), shelter * 0.52);
         vec3 tint = hue * (1.0 - tintAmount * 0.72 + tintAmount * diffuse);
         tint += fishTailLobe(N, V, key, fill, 1.0 - shelter);
         gl_FragColor = vec4(tint, 1.0);
@@ -3256,7 +3393,7 @@ vec3 fishRestoreSideCloth(vec3 color, vec3 pigment, vec3 p, vec3 viewN,
 }
 
 vec3 fishShadeTailHem(vec3 color, vec3 p, vec3 normal, float cloth, float frontCoverage) {
-  float cavity = smoothstep(0.045, 0.082, p.x) * (1.0 - smoothstep(0.145, 0.189, p.x))
+  float cavity = smoothstep(0.045, 0.082, -p.x) * (1.0 - smoothstep(0.145, 0.189, -p.x))
     * smoothstep(-0.434, -0.406, p.y) * (1.0 - smoothstep(-0.359, -0.325, p.y))
     * smoothstep(-0.168, -0.114, p.z) * (1.0 - smoothstep(-0.048, -0.019, p.z));
   float ivory = smoothstep(0.39, 0.64, min(min(color.r,color.g),color.b));
@@ -3412,11 +3549,14 @@ const fishProfileMixSource = `
 
 </script>
 <script>
-function createFishCupArm(THREE, chest, chestRest, rootGroup) {
-  const shoulder = new THREE.Vector3(0.076,-0.058,0.155);
-  const elbow = new THREE.Vector3(0.131,-0.127,0.120);
-  const wrist = new THREE.Vector3(0.151,-0.181,0.169);
-  const palmRest = new THREE.Vector3(0.158,-0.207,0.178);
+function createFishCupArm(THREE, chest, chestRest, rootGroup, side=1) {
+  const mirrorX=side===1 ? 0 : -.064;
+  const depth=side===1 ? 0 : -.045;
+  const landmark=(x,y,z)=>new THREE.Vector3(mirrorX+side*x,y,z+depth);
+  const shoulder = landmark(0.076,-0.058,0.155);
+  const elbow = landmark(0.131,-0.127,0.120);
+  const wrist = landmark(0.151,-0.181,0.169);
+  const palmRest = landmark(0.158,-0.207,0.178);
   const upper=new THREE.Bone(), forearm=new THREE.Bone(), hand=new THREE.Bone();
   upper.name='rig_cupShoulder';
   forearm.name='rig_cupElbow';
@@ -3436,7 +3576,7 @@ function createFishCupArm(THREE, chest, chestRest, rootGroup) {
   const restDirection=wrist.clone().sub(shoulder).normalize();
   const restPole=elbow.clone().sub(shoulder);
   restPole.addScaledVector(restDirection,-restPole.dot(restDirection)).normalize();
-  const reachPole=new THREE.Vector3(0.78,-0.54,-0.33).normalize();
+  const reachPole=new THREE.Vector3(side*0.78,-0.54,-0.33).normalize();
   const target=new THREE.Vector3(), desiredWrist=new THREE.Vector3(), aim=new THREE.Vector3();
   const bend=new THREE.Vector3(), joint=new THREE.Vector3(), temp=new THREE.Vector3();
   const chestQ=new THREE.Quaternion(), modelQ=new THREE.Quaternion(), goalQ=new THREE.Quaternion();
@@ -3452,17 +3592,18 @@ function createFishCupArm(THREE, chest, chestRest, rootGroup) {
   }
 
   function skin(x,y,z,color) {
-    if(x<0.053 || y>0.014 || y< -0.253 || z<0.078) return null;
+    const span=(x-mirrorX)*side;
+    if(span<0.053 || y>0.014 || y< -0.253 || z-depth<0.078) return null;
     const da=distanceSq(x,y,z,shoulder,elbow);
     const db=distanceSq(x,y,z,elbow,wrist);
     const dc=distanceSq(x,y,z,wrist,palmRest);
     const d=Math.sqrt(Math.min(da,db,dc));
     const apronEdge=0.055+Math.max(0,-0.082-y)*0.45;
-    const region=smooth(apronEdge,apronEdge+0.033,x)*smooth(-0.253,-0.228,y)
-      *(1-smooth(-0.040,0.014,y))*smooth(0.078,0.122,z);
+    const region=smooth(apronEdge,apronEdge+0.033,span)*smooth(-0.253,-0.228,y)
+      *(1-smooth(-0.040,0.014,y))*smooth(0.078,0.122,z-depth);
     let mask=region*(1-smooth(0.029,0.073,d));
     const warm=color.r-color.b>0.035 && color.r>0.40;
-    if (y< -0.187 && dc<0.030**2 && x>0.123 && warm) mask=Math.max(mask,0.93*region);
+    if (y< -0.187 && dc<0.030**2 && span>0.123 && warm) mask=Math.max(mask,0.93*region);
     if(mask<0.0001) return null;
     const handShare=smooth(-0.174,-0.203,y)*(1-smooth(0.024,0.057,Math.sqrt(dc)));
     const upperShare=1-smooth(-0.102,-0.150,y);
@@ -3503,7 +3644,7 @@ function createFishCupArm(THREE, chest, chestRest, rootGroup) {
   }
 
   return {
-    bones:[upper,forearm,hand], landmarks:[shoulder,elbow,wrist], palmRest, handOffset, skin, setPalm, reset,
+    bones:[upper,forearm,hand], landmarks:[shoulder,elbow,wrist], palmRest, handOffset, skin, setPalm, reset, side,
     palmWorld(out){return hand.localToWorld(out.copy(handOffset));},
     palmModel(out){return rootGroup.worldToLocal(hand.localToWorld(out.copy(handOffset)));},
     palmRestModel(out){return rootGroup.worldToLocal(chest.localToWorld(out.copy(neutralPalm)));},
@@ -3979,6 +4120,8 @@ function createFishMouthRig(THREE, headBone, surface, referenceTexture, skinText
   const morphSmile = new Float32Array(numVerts * 3);
   const morphPurse = new Float32Array(numVerts * 3);
   const morphRest = new Float32Array(numVerts * 3);
+  const morphPout = new Float32Array(numVerts * 3);
+  const morphSurprise = new Float32Array(numVerts * 3);
 
   // Shape evaluators returning { px, py, zSculpt } for a grid column u in [-1, 1] and row v in [0, 1]
   // 1) Neutral: original art bounds [58.5..71.2], top flat ~107.0, bottom ~114.8, widest ~108.0
@@ -4066,6 +4209,11 @@ function createFishMouthRig(THREE, headBone, surface, referenceTexture, skinText
       const pS = surface.point(sState.px, sState.py, sState.zSculpt, depthAt).sub(headOrigin);
       const pP = surface.point(pState.px, pState.py, pState.zSculpt, depthAt).sub(headOrigin);
       const pR = surface.point(rState.px, rState.py, rState.zSculpt, depthAt).sub(headOrigin);
+      const curve=Math.sqrt(Math.max(.001,1-u*u));
+      const pPout=surface.point(CX_NEUTRAL+4.3*u,CY_NEUTRAL+(v-.5)*5.4,.0021,depthAt).sub(headOrigin);
+      const pSurprise=surface.point(CX_NEUTRAL+3.5*u,CY_NEUTRAL+(v-.5)*6.1*curve,.0013,depthAt).sub(headOrigin);
+      pPout.sub(pN).toArray(morphPout,idx*3);
+      pSurprise.sub(pN).toArray(morphSurprise,idx*3);
 
       // Neutral coordinates
       positions[idx * 3 + 0] = pN.x;
@@ -4122,10 +4270,12 @@ function createFishMouthRig(THREE, headBone, surface, referenceTexture, skinText
     new THREE.BufferAttribute(morphClose, 3),
     new THREE.BufferAttribute(morphSmile, 3),
     new THREE.BufferAttribute(morphPurse, 3),
-    new THREE.BufferAttribute(morphRest, 3)
+    new THREE.BufferAttribute(morphRest, 3),
+    new THREE.BufferAttribute(morphPout, 3),
+    new THREE.BufferAttribute(morphSurprise, 3)
   ];
   geom.morphTargetsRelative = true;
-  for (const [i, name] of ['close', 'smile', 'purse', 'rest'].entries()) {
+  for (const [i, name] of ['close', 'smile', 'purse', 'rest', 'pout', 'surprise'].entries()) {
     geom.morphAttributes.position[i].name = name;
   }
 
@@ -4135,9 +4285,10 @@ function createFishMouthRig(THREE, headBone, surface, referenceTexture, skinText
       uOriginal: { value: referenceTexture },
       uSkin: { value: skinTexture },
       uMorphWeight: { value: new THREE.Vector4() },
-      uRim: { value: new THREE.Color(0x925553) },
-      uCavity: { value: new THREE.Color(0xab6962) },
-      uTongue: { value: new THREE.Color(0xe8a69a) }
+      uSpecialLips: { value: new THREE.Vector2() },
+      uRim: { value: new THREE.Color(0xa25d58) },
+      uCavity: { value: new THREE.Color(0xb66e65) },
+      uTongue: { value: new THREE.Color(0xefa99e) }
     },
     vertexShader: `
       #include <common>
@@ -4166,6 +4317,7 @@ function createFishMouthRig(THREE, headBone, surface, referenceTexture, skinText
       uniform sampler2D uOriginal;
       uniform sampler2D uSkin;
       uniform vec4 uMorphWeight;
+      uniform vec2 uSpecialLips;
       uniform vec3 uRim;
       uniform vec3 uCavity;
       uniform vec3 uTongue;
@@ -4188,18 +4340,28 @@ function createFishMouthRig(THREE, headBone, surface, referenceTexture, skinText
         float distanceToRim = length(vec2(p.x/radiusX,height/radiusY)) - 1.0;
         float aa = clamp(fwidth(distanceToRim)*0.62,0.018,0.55);
         float lipMask = 1.0 - smoothstep(-aa, aa, distanceToRim);
-        float transition = smoothstep(0.035,0.67,close + 0.84*smile + purse + rest);
-        float alpha = mix(artMask, lipMask, transition) * source.a;
+        float pout = uSpecialLips.x;
+        float surprise = uSpecialLips.y;
+        float transition = smoothstep(0.045,0.70,close + 0.84*smile + purse + rest + pout + surprise);
+        float softAA = min(0.60,aa*(1.0+0.34*rest));
+        float restEdge = 1.0-smoothstep(-softAA,softAA,distanceToRim+0.024*rest);
+        float lipMaskSoft = mix(lipMask,restEdge,rest);
+        float poutLine = abs(p.y+0.39*taper*taper-0.04)-0.105;
+        float poutCorners = length(vec2((taper-0.65)*4.0,(p.y+0.08)*0.65))-0.27;
+        float pucker = (1.0-smoothstep(-aa,aa,min(poutLine,poutCorners)))
+          * (1.0-smoothstep(0.66,0.97,taper));
+        lipMaskSoft=mix(lipMaskSoft,pucker,smoothstep(0.15,0.75,pout));
+        float alpha = mix(artMask, lipMaskSoft, transition) * source.a;
         if (alpha <= 0.004) discard;
 
         float tongue = smoothstep(-0.24,0.57,p.y) * (1.0-smoothstep(0.36,0.78,taper))
           * (1.0-0.76*close) * (1.0-0.25*purse) * (1.0-0.94*rest);
         float cavity = 1.0 - smoothstep(-0.26,-0.072,distanceToRim);
-        float shade = mix(0.57,1.04,smoothstep(-0.70,0.48,p.y));
+        float shade = mix(0.68,1.05,smoothstep(-0.70,0.48,p.y));
         vec3 interior = mix(uCavity * shade,uTongue,tongue * 0.92);
-        vec3 painted = mix(uRim,interior,cavity * (1.0-0.64*close-0.38*rest));
-        vec3 pigment = mix(source.rgb*artMask,painted*lipMask,transition);
-        vec3 color = pigment/max(0.0001, mix(artMask,lipMask,transition));
+        vec3 painted = mix(uRim,interior,cavity * (1.0-0.64*close-0.38*rest-0.70*pout));
+        vec3 pigment = mix(source.rgb*artMask,painted*lipMaskSoft,transition);
+        vec3 color = pigment/max(0.0001, mix(artMask,lipMaskSoft,transition));
         gl_FragColor = vec4(color, alpha);
         #include <colorspace_fragment>
       }
@@ -4214,28 +4376,38 @@ function createFishMouthRig(THREE, headBone, surface, referenceTexture, skinText
   headBone.add(mesh);
 
   const previous = new THREE.Vector4(-1, -1, -1, -1);
-  function set({ lipClose = 0, lipSmile = 0, lipPurse = 0, lipRest = 0 } = {}) {
+  const special = material.uniforms.uSpecialLips.value;
+  function set({ lipClose = 0, lipSmile = 0, lipPurse = 0, lipRest = 0, lipPout = 0, lipSurprise = 0 } = {}) {
     const clamp = THREE.MathUtils.clamp;
     const close = clamp(lipClose,0,1);
     const smile = clamp(lipSmile,0,1);
     const purse = clamp(lipPurse,0,1);
     const rest = clamp(lipRest,0,1);
-    const sum = Math.max(1, close + smile + purse + rest);
+    const pout = clamp(lipPout,0,1), surprise = clamp(lipSurprise,0,1);
+    const sum = Math.max(1, close + smile + purse + rest + pout + surprise);
     const c = close / sum, s = smile / sum, p = purse / sum, r = rest / sum;
-    if (previous.x === c && previous.y === s && previous.z === p && previous.w === r) return;
+    const f=pout/sum, o=surprise/sum;
+    if (previous.x === c && previous.y === s && previous.z === p && previous.w === r
+        && special.x === f && special.y === o) return;
     previous.set(c, s, p, r);
     mesh.morphTargetInfluences[0] = c;
     mesh.morphTargetInfluences[1] = s;
     mesh.morphTargetInfluences[2] = p;
     mesh.morphTargetInfluences[3] = r;
+    mesh.morphTargetInfluences[4] = f;
+    mesh.morphTargetInfluences[5] = o;
     material.uniforms.uMorphWeight.value.copy(previous);
+    special.set(f,o);
     for (let i = 0; i < numVerts; i++) {
       const j = i * 3;
-      const x = positions[j] + c * morphClose[j] + s * morphSmile[j] + p * morphPurse[j] + r * morphRest[j];
-      const y = positions[j+1] + c * morphClose[j+1] + s * morphSmile[j+1] + p * morphPurse[j+1] + r * morphRest[j+1];
+      const x = positions[j] + c * morphClose[j] + s * morphSmile[j] + p * morphPurse[j] + r * morphRest[j]
+        + f*morphPout[j] + o*morphSurprise[j];
+      const y = positions[j+1] + c * morphClose[j+1] + s * morphSmile[j+1] + p * morphPurse[j+1] + r * morphRest[j+1]
+        + f*morphPout[j+1] + o*morphSurprise[j+1];
       const sampled = depthAt(x + headOrigin.x, y + headOrigin.y) - headOrigin.z;
-      const mixed = positions[j+2] + c * morphClose[j+2] + s * morphSmile[j+2] + p * morphPurse[j+2] + r * morphRest[j+2];
-      const baseDepth = Number.isFinite(sampled) ? sampled + 0.0020 + p * 0.0006 : mixed;
+      const mixed = positions[j+2] + c * morphClose[j+2] + s * morphSmile[j+2] + p * morphPurse[j+2] + r * morphRest[j+2]
+        + f*morphPout[j+2] + o*morphSurprise[j+2];
+      const baseDepth = Number.isFinite(sampled) ? sampled + 0.0020 + p * 0.0006 + f * 0.0011 : mixed;
       depth.setX(i,baseDepth+depthLift[i]);
     }
     depth.needsUpdate = true;
@@ -5091,6 +5263,55 @@ function createFishGreeting(THREE,rig) {
   return {apply,status};
 }
 
+function createFishExpressionHands(THREE,rig) {
+  const neutral=new THREE.Vector3(), target=new THREE.Vector3(), palm=new THREE.Vector3();
+  const direction=new THREE.Vector3(), axis=new THREE.Vector3(), tip=new THREE.Vector3();
+  const front=new THREE.Vector3(), rotated=new THREE.Vector3(), cross=new THREE.Vector3();
+  const goalQ=new THREE.Quaternion(), rollQ=new THREE.Quaternion(), palmQ=new THREE.Quaternion();
+
+  function reach(arm,sleeve,lift,shape,chin) {
+    if(lift<=0.0001) {
+      // The cup arm is also driven by the greeting and tea interactions.
+      if(arm.side<0)sleeve.setBlend(0);
+      return;
+    }
+    arm.palmRestModel(neutral);
+    axis.copy(arm.handOffset).normalize();
+    if(chin) {
+      target.copy(shape==='point' ? rig.chinPointSocket : rig.chinPalmSocket);
+      rig.body.parent.worldToLocal(rig.head.localToWorld(target));
+      direction.set(shape==='point' ? .36 : .62,.91,-.08).normalize();
+    } else {
+      const chestHeight=-.083+.70*(neutral.y-arm.palmRest.y);
+      target.set(arm.side===1 ? .016 : -.154,chestHeight,.225);
+      direction.set(-arm.side*.22,.95,.23).normalize();
+    }
+    goalQ.setFromUnitVectors(axis,direction);
+    front.set(0,0,1).projectOnPlane(axis).normalize();
+    rotated.copy(front).applyQuaternion(goalQ);
+    front.set(arm.side*.20,0,1).projectOnPlane(direction).normalize();
+    const roll=Math.atan2(cross.crossVectors(rotated,front).dot(direction),rotated.dot(front));
+    goalQ.premultiply(rollQ.setFromAxisAngle(direction,roll));
+    palmQ.identity().slerp(goalQ,lift);
+    if(chin) {
+      tip.copy(shape==='point' ? sleeve.pointTip : sleeve.contactTip).sub(arm.handOffset);
+      target.sub(tip.applyQuaternion(goalQ));
+    }
+    palm.lerpVectors(neutral,target,lift);
+    // Come forward before turning inward, clear of the hair and apron.
+    palm.z+=(chin ? .053 : .038)*Math.sin(Math.PI*lift);
+    arm.setPalm(palm,palmQ);
+    sleeve.setBlend(THREE.MathUtils.smoothstep(lift,0,.24),null,shape);
+  }
+
+  function apply(pose) {
+    if(pose.chinHand>0)reach(rig.freeArm,rig.freeSleeve,pose.chinHand,pose.chinPoint>.5 ? 'point' : 'open',true);
+    else reach(rig.freeArm,rig.freeSleeve,pose.leftFist,'fist',false);
+    reach(rig.cupArm,rig.greetingSleeve,pose.rightFist,'fist',false);
+  }
+  return {apply};
+}
+
 </script>
 <script>
 function createFishCupHand(THREE,root,arm,material) {
@@ -5243,8 +5464,7 @@ function createFishCupHand(THREE,root,arm,material) {
 <script>
 const fishWaveTuckDirection = [-0.064,-0.010,-0.042];
 
-function createFishGreetingSleeve(THREE, rig, root) {
-  const arm=rig.cupArm;
+function createFishGreetingSleeve(THREE, rig, root, arm=rig.cupArm) {
   const fade={value:0};
   const sections=22,sides=16;
   const coordinates=new Float32Array((sections+1)*sides*3);
@@ -5370,9 +5590,9 @@ function createFishGreetingSleeve(THREE, rig, root) {
   const parts=[];
   function finger(x,y,z,sx,sy,sz,rotation=0) {
     const shape=new THREE.Object3D();
-    shape.position.copy(arm.handOffset).add(new THREE.Vector3(x,y,z));
+    shape.position.copy(arm.handOffset).add(new THREE.Vector3(arm.side*x,y,z));
     shape.scale.set(sx,sy,sz);
-    shape.rotation.z=rotation;
+    shape.rotation.z=arm.side*rotation;
     parts.push(shape);
   }
   const wristFill=new THREE.Object3D();
@@ -5380,58 +5600,85 @@ function createFishGreetingSleeve(THREE, rig, root) {
   wristFill.scale.set(0.0105,0.020,0.0105);
   wristFill.quaternion.setFromUnitVectors(new THREE.Vector3(0,1,0),arm.handOffset.clone().normalize());
   parts.push(wristFill);
+  const normalMatrix=new THREE.Matrix3();
+  function bakeHand() {
+    const handPositions=[],handNormals=[],handIndices=[];
+    for(const part of parts) {
+      const offset=handPositions.length/3;
+      part.updateMatrix();
+      normalMatrix.getNormalMatrix(part.matrix);
+      for(let i=0;i<sphere.attributes.position.count;i++){
+        p.fromBufferAttribute(sphere.attributes.position,i).applyMatrix4(part.matrix);
+        n.fromBufferAttribute(sphere.attributes.normal,i).applyNormalMatrix(normalMatrix);
+        handPositions.push(p.x,p.y,p.z);
+        handNormals.push(n.x,n.y,n.z);
+      }
+      for(const index of sphere.index.array)handIndices.push(offset+index);
+    }
+    const geometry=new THREE.BufferGeometry();
+    geometry.setAttribute('position',new THREE.Float32BufferAttribute(handPositions,3));
+    geometry.setAttribute('normal',new THREE.Float32BufferAttribute(handNormals,3));
+    geometry.setIndex(handIndices);
+    parts.length=1;
+    return geometry;
+  }
   finger(0,0,0,0.014,0.016,0.010,0.04);
   finger(-0.011,0.001,0.006,0.007,0.011,0.007,-0.48);
   finger(-0.002,-0.012,0.001,0.011,0.011,0.008,0.09);
   finger(0.008,-0.007,0.002,0.007,0.010,0.007,0.26);
-  const handPositions=[],handNormals=[],handIndices=[];
-  const normalMatrix=new THREE.Matrix3();
-  for(const part of parts) {
-    const offset=handPositions.length/3;
-    part.updateMatrix();
-    normalMatrix.getNormalMatrix(part.matrix);
-    for(let i=0;i<sphere.attributes.position.count;i++){
-      p.fromBufferAttribute(sphere.attributes.position,i).applyMatrix4(part.matrix);
-      n.fromBufferAttribute(sphere.attributes.normal,i).applyNormalMatrix(normalMatrix);
-      handPositions.push(p.x,p.y,p.z);
-      handNormals.push(n.x,n.y,n.z);
-    }
-    for(const index of sphere.index.array)handIndices.push(offset+index);
+  const open=bakeHand();
+  finger(0,0,0,0.015,0.013,0.011);
+  finger(-.004,-.007,.004,.012,.009,.010);
+  finger(.009,-.002,.007,.007,.010,.007,-.42);
+  const fist=bakeHand();
+  let point=null;
+  if(arm.side<0) {
+    finger(0,.003,0,.013,.013,.010);
+    finger(.007,-.010,.001,.0058,.022,.0065,.21);
+    finger(-.006,-.005,.006,.008,.010,.007,-.30);
+    finger(.005,.003,.008,.008,.005,.005,.30);
+    point=bakeHand();
   }
-  const handGeometry=new THREE.BufferGeometry();
-  handGeometry.setAttribute('position',new THREE.Float32BufferAttribute(handPositions,3));
-  handGeometry.setAttribute('normal',new THREE.Float32BufferAttribute(handNormals,3));
-  handGeometry.setIndex(handIndices);
-  const contactTip=new THREE.Vector3();
+  sphere.dispose();
   const axis=arm.handOffset.clone().normalize();
-  let furthest=-Infinity;
-  for(let i=0;i<handGeometry.attributes.position.count;i++){
-    p.fromBufferAttribute(handGeometry.attributes.position,i);
-    const projection=p.dot(axis);
-    if(projection>furthest){furthest=projection;contactTip.copy(p);}
+  function findTip(geometry) {
+    const tip=new THREE.Vector3();
+    let furthest=-Infinity;
+    for(let i=0;i<geometry.attributes.position.count;i++){
+      p.fromBufferAttribute(geometry.attributes.position,i);
+      const projection=p.dot(axis);
+      if(projection>furthest){furthest=projection;tip.copy(p);}
+    }
+    return tip;
   }
-  const mitt=new THREE.Mesh(handGeometry,material(true));
+  const contactTip=findTip(open);
+  const pointTip=point ? findTip(point) : contactTip;
+  const mitt=new THREE.Mesh(open,material(true));
   mitt.name='greetingHand';
   arm.bones[2].add(mitt);
-  const grip = createFishCupHand(THREE,root,arm,material(true));
+  const grip = arm.side===1 ? createFishCupHand(THREE,root,arm,material(true)) : null;
+  const presentation=rig.body.material.uniforms.uArmPresentation.value;
 
-  function setBlend(value,cup=null) {
+  function setBlend(value,cup=null,shape='open') {
     fade.value=value;
     sleeve.visible=value>0.006;
     mitt.visible=sleeve.visible&&!cup;
-    grip.mesh.visible=sleeve.visible&&Boolean(cup);
+    if (mitt.visible) mitt.geometry=shape==='point' ? point : shape==='fist' ? fist : open;
+    if (grip) grip.mesh.visible=sleeve.visible&&Boolean(cup);
     if(sleeve.visible)updateGeometry();
-    rig.body.material.uniforms.uArmPresentation.value=value;
-    return grip.mesh.visible?grip.setPose(cup):null;
+    if (arm.side===1) presentation.x=value;
+    else presentation.y=value;
+    return grip?.mesh.visible?grip.setPose(cup):null;
   }
   updateGeometry();
   setBlend(0);
-  return {setBlend,sleeve,mitt,contactTip};
+  return {setBlend,sleeve,mitt,contactTip,pointTip};
 }
 
 </script>
 <script>
 const fishStretchSeconds = 2.28;
+const fishExpressionSeconds = {smug:2.60,pout:2.35,delighted:2.20,thinking:3.05};
 
 function applyEyeExpression(out, autoLeft, autoRight, actionLeft, actionRight, actionSmile, interactionSoftness, interactionSmile) {
   var al = autoLeft < 0 ? 0 : (autoLeft > 1 ? 1 : autoLeft);
@@ -5525,6 +5772,7 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
   const eyeCenter = new THREE.Vector3(-0.092, 0.018, 0.220);
   const gazeSolver = createFishGaze(THREE);
   const greeting = createFishGreeting(THREE, rig);
+  const expressionHands = createFishExpressionHands(THREE,rig);
   const waveKeys = new Float32Array(4), kissKeys = new Float32Array(5);
   const danceKeys = new Float32Array(6);
   let viewerAttention=0, viewerPitch=0, viewerYaw=0;
@@ -5548,73 +5796,28 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
     greetingRise: 0,
     greetingSway: 0,
     kissReach: 0,
-    kissRelease: 0
+    kissRelease: 0,
+    chinHand: 0,
+    chinPoint: 0,
+    leftFist: 0,
+    rightFist: 0
   };
 
-  const actionTargetPose = {
-    headPitch: 0,
-    headYaw: 0,
-    headRoll: 0,
-    chestPitch: 0,
-    chestRoll: 0,
-    breathe: 0,
-    hipY: 0,
-    hipZ: 0,
-    chestZ: 0,
-    lift: 0,
-    tailAngle: 0,
-    hairLag: 0,
-    greetingCover: 0,
-    greetingRise: 0,
-    greetingSway: 0,
-    kissReach: 0,
-    kissRelease: 0
-  };
-
-  const actionInterpFrom = {
-    headPitch: 0,
-    headYaw: 0,
-    headRoll: 0,
-    chestPitch: 0,
-    chestRoll: 0,
-    breathe: 0,
-    hipY: 0,
-    hipZ: 0,
-    chestZ: 0,
-    lift: 0,
-    tailAngle: 0,
-    hairLag: 0,
-    greetingCover: 0,
-    greetingRise: 0,
-    greetingSway: 0,
-    kissReach: 0,
-    kissRelease: 0
-  };
+  const actionTargetPose = {...currentPose};
+  const actionInterpFrom = {...currentPose};
 
   function resetPoseObj(target) {
-    target.headPitch = 0;
-    target.headYaw = 0;
-    target.headRoll = 0;
-    target.chestPitch = 0;
-    target.chestRoll = 0;
-    target.breathe = 0;
-    target.hipY = 0;
-    target.hipZ = 0;
-    target.chestZ = 0;
-    target.lift = 0;
-    target.tailAngle = 0;
-    target.hairLag = 0;
-    target.greetingCover = 0;
-    target.greetingRise = 0;
-    target.greetingSway = 0;
-    target.kissReach = 0;
-    target.kissRelease = 0;
+    for(const name in target) target[name]=0;
   }
 
   // Smooth easing helper
   function smoothstep(min, max, value) {
     const x = Math.max(0, Math.min(1, (value - min) / (max - min)));
     return x * x * (3 - 2 * x);
+  }
+
+  function beat(t,start,arrive,release,end) {
+    return smoothstep(start,arrive,t)*(1-smoothstep(release,end,t));
   }
 
   function hermite(t) {
@@ -5731,6 +5934,95 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
   // Action definitions (time in seconds)
   // Each action evaluates (t, outPose, outFace, outGazeOffset)
   const ACTIONS = {
+    smug: {
+      duration:fishExpressionSeconds.smug, eyeWindow:[.17,2.27],
+      eval(t,pose,f,g) {
+        const glance=beat(t,.02,.24,1.55,2.09);
+        const lean=beat(t,.20,.69,1.78,2.54);
+        const smirk=beat(t,.52,.99,1.71,2.46);
+        pose.chinHand=beat(t,.30,.88,1.67,2.37);
+        pose.headRoll=-.108*lean;
+        pose.headYaw=.085*lean;
+        pose.headPitch=.036*lean;
+        pose.chestRoll=-.035*lean;
+        pose.tailAngle=.064*beat(t,.53,1.08,1.72,2.55);
+        pose.hairLag=.031*beat(t,.37,.85,1.89,2.59);
+        const wink=blinkWeight(t-1.78,.081,.034,.15);
+        f.blinkLeft=Math.max(.42*smirk,wink);
+        f.blinkRight=Math.max(.30*smirk,.82*wink);
+        f.smile=.37*smirk;
+        g.x=.54*glance;
+        g.y=.072*lean;
+      }
+    },
+    pout: {
+      duration:fishExpressionSeconds.pout, eyeWindow:[.08,1.95],
+      eval(t,pose,f,g) {
+        const offended=beat(t,.07,.34,1.39,2.05);
+        const puff=beat(t,.27,.66,1.34,1.91);
+        const exhale=beat(t,1.34,1.57,1.62,1.97);
+        pose.leftFist=beat(t,.18,.51,1.42,2.19);
+        pose.rightFist=beat(t,.22,.57,1.38,2.23);
+        pose.headPitch=.055*offended;
+        pose.headRoll=.042*offended;
+        pose.chestPitch=.057*offended-.031*exhale;
+        pose.hipY=-.010*offended-.007*exhale;
+        pose.tailAngle=-.10*beat(t,.25,.58,1.49,2.26);
+        pose.hairLag=-.026*beat(t,.30,.62,1.54,2.26);
+        f.blinkLeft=.22*offended;
+        f.blinkRight=.28*offended;
+        f.lipPout=.96*puff;
+        f.lipPurse=.46*exhale*(1-puff);
+        f.cheeks=puff;
+        f.brow=-offended;
+        g.y=.14*offended;
+      }
+    },
+    delighted: {
+      duration:fishExpressionSeconds.delighted, eyeWindow:[.06,1.63],
+      eval(t,pose,f,g) {
+        const notice=beat(t,.015,.16,.73,1.29);
+        const bright=beat(t,.15,.33,1.14,1.65);
+        const up=beat(t,.28,.53,.59,.91);
+        const settle=beat(t,.67,.85,.91,1.11);
+        const grin=beat(t,1.03,1.34,1.57,2.08);
+        pose.rightFist=beat(t,.24,.53,1.19,1.92);
+        pose.leftFist=beat(t,.29,.57,1.27,1.99);
+        pose.headPitch=-.074*bright+.028*settle;
+        pose.headRoll=-.030*grin;
+        pose.hipY=.024*up-.013*settle;
+        pose.chestPitch=-.058*up+.021*settle;
+        pose.tailAngle=.13*beat(t,.35,.64,.79,1.35)-.032*settle;
+        pose.hairLag=.057*beat(t,.43,.68,.77,1.22);
+        f.stars=bright;
+        f.brow=.78*bright;
+        f.lipSurprise=.93*beat(t,.13,.34,.94,1.41);
+        f.smile=.47*grin;
+        g.y=-.24*notice;
+      }
+    },
+    thinking: {
+      duration:fishExpressionSeconds.thinking, eyeWindow:[.14,2.58],
+      eval(t,pose,f,g) {
+        const search=beat(t,.02,.30,2.20,2.81);
+        const tilt=beat(t,.24,.90,2.12,2.99);
+        const follow=beat(t,1.35,1.70,2.18,2.74);
+        pose.chinHand=beat(t,.40,1.00,2.18,2.92);
+        pose.chinPoint=1;
+        pose.headRoll=.144*tilt;
+        pose.headPitch=-.027*tilt+.024*follow;
+        pose.headYaw=-.063*tilt;
+        pose.chestRoll=.040*tilt;
+        pose.tailAngle=-.057*beat(t,.57,1.12,2.17,3.02);
+        pose.hairLag=.035*beat(t,.45,1.02,2.23,3.03);
+        f.blinkLeft=.78*blinkWeight(t-2.18,.082,.025,.14);
+        f.blinkRight=.80*blinkWeight(t-2.186,.081,.028,.15);
+        f.lipPout=.32*beat(t,.65,1.14,2.04,2.60);
+        f.brow=.27*tilt;
+        g.x=-.58*search+.32*follow;
+        g.y=-.31*search+.17*follow;
+      }
+    },
     blink: {
       duration: 0.30,
       eyeWindow: [0,0.23],
@@ -5981,7 +6273,12 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
     blinkLeft: 0,
     blinkRight: 0,
     smile: 0,
-    lipPurse: 0
+    lipPurse: 0,
+    lipPout: 0,
+    lipSurprise: 0,
+    cheeks: 0,
+    stars: 0,
+    brow: 0
   };
 
   const actionInterpFace = {...actionFace};
@@ -5995,10 +6292,7 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
 
   function clearActionTarget() {
     resetPoseObj(actionTargetPose);
-    actionFace.blinkLeft=0;
-    actionFace.blinkRight=0;
-    actionFace.smile=0;
-    actionFace.lipPurse=0;
+    for(const name in actionFace) actionFace[name]=0;
     actionGazeOffset.set(0,0);
   }
 
@@ -6070,6 +6364,7 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
     clearActionTarget();
     resetPoseObj(actionInterpFrom);
     greeting?.apply(0,0,0);
+    expressionHands.apply(actionTargetPose);
     if (rig && typeof rig.reset === 'function') {
       rig.reset();
     }
@@ -6226,6 +6521,7 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
       rig.setPose(currentPose, locomotion);
       greeting?.apply(currentPose.greetingRise, currentPose.greetingSway, currentPose.greetingCover,
         currentPose.kissReach,currentPose.kissRelease,activeActionName==='jumpWave'?currentPose.greetingRise:0);
+      expressionHands.apply(currentPose);
     }
 
     // Compute focus from the midpoint between the eyes in the posed head.
@@ -6313,7 +6609,12 @@ function createFishDirector(THREE, rig, face, gazeUniform, eyeFocus, eyeHalfSpan
       appliedFace.lipClose = swallow;
       appliedFace.lipSmile = Math.max(smile, interaction?.lipSmile ?? 0);
       appliedFace.lipPurse = purse;
-      const available = Math.max(0,1-swallow-appliedFace.lipSmile-purse);
+      appliedFace.lipPout = actionFace.lipPout;
+      appliedFace.lipSurprise = actionFace.lipSurprise;
+      appliedFace.cheeks = actionFace.cheeks;
+      appliedFace.stars = actionFace.stars;
+      appliedFace.brow = actionFace.brow;
+      const available = Math.max(0,1-swallow-appliedFace.lipSmile-purse-appliedFace.lipPout-appliedFace.lipSurprise);
       const openSmile = smoothstep(.05,.55,appliedFace.lipSmile);
       appliedFace.lipRest = available*(.97-.22*openSmile);
       face.set(inspectionFace ?? appliedFace);
@@ -8889,6 +9190,134 @@ const fishSideGroomNormals = [
   15905,15446,6904,-28061,
 ];
 
+const fishWrapClearance = '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';
+async function applyFishWrapClearance(geometry) {
+  const bytes = await decodeTeaBakedBytes(fishWrapClearance);
+  const view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
+  const moved = view.getUint16(0,true), shaped = view.getUint16(2,true);
+  if (bytes.length !== 4 + moved*6 + shaped*8) throw new Error('后发发尾网格长度不符');
+  const {position, normal} = geometry.attributes;
+  let offset = 4;
+  for (let i=0;i<moved;i++,offset+=6) {
+    const vertex = view.getUint16(offset,true);
+    position.setY(vertex,position.getY(vertex)+view.getInt32(offset+2,true)*1e-6);
+  }
+  for (let i=0;i<shaped;i++,offset+=8) {
+    const vertex = view.getUint16(offset,true);
+    normal.setXYZ(vertex,view.getInt16(offset+2,true)/32767,
+      view.getInt16(offset+4,true)/32767,view.getInt16(offset+6,true)/32767);
+  }
+}
+
+function addFishRearDressPanel(THREE, rig, atlas, roomLight) {
+  const segments=64, rows=12;
+  const coordinates=[], uv=[], index=[];
+  const origin=rig.skeleton.bones[0].position;
+  for (let row=0;row<=rows;row++) {
+    const t=row/rows;
+    const flare=t*(1.38-0.38*t);
+    for (let col=0;col<=segments;col++) {
+      const turn=(col/segments*2-1)*1.20;
+      // Fade into real skirt at outer flanks; prevent second front rim.
+      const center=Math.max(0,Math.cos(turn));
+      const foldPhase=turn*21.8+0.18;
+      const fold=0.5+0.5*Math.cos(foldPhase);
+      const ruffle=THREE.MathUtils.smoothstep(t,0.74,1.0);
+      // +22.9% visible skirt flare near hem (0.132 -> 0.300) with physical pleat crests & valleys.
+      const joined=THREE.MathUtils.smoothstep(Math.abs(turn),0.98,1.19);
+      const width=0.132+0.171*flare
+        +(0.003+0.008*ruffle)*(fold-0.35)*(1.0-0.93*joined);
+      const depth=0.103*(0.45+0.55*center)+0.170*flare*(0.54+0.46*center)
+        +(0.003+0.010*ruffle)*(fold-0.35)*(1.0-0.91*joined);
+      const x=-0.041+Math.sin(turn)*width;
+      const y=-0.268-(0.098-0.017*center)*t-0.003*ruffle*center
+        -0.009*ruffle*fold*(1.0-joined)+0.016*flare*joined;
+      const z=0.012-depth;
+      coordinates.push(x-origin.x,y-origin.y,z-origin.z);
+      uv.push(turn,t);
+      if (row<rows && col<segments) {
+        const a=row*(segments+1)+col, b=a+segments+1;
+        index.push(a,a+1,b,a+1,b+1,b);
+      }
+    }
+  }
+  const geometry=new THREE.BufferGeometry();
+  geometry.setAttribute('position',new THREE.Float32BufferAttribute(coordinates,3));
+  geometry.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+  geometry.setIndex(index);
+  geometry.computeVertexNormals();
+  const material=new THREE.ShaderMaterial({
+    toneMapped:false,
+    uniforms:{...roomLight,uFishDressLace:{value:atlas}},
+    vertexShader:`
+      varying vec2 vDressUv;
+      varying vec3 vDressN;
+      varying vec3 vDressP;
+      void main() {
+        vDressUv=uv;
+        vDressN=normalize(normalMatrix*normal);
+        vec4 point=modelViewMatrix*vec4(position,1.0);
+        vDressP=point.xyz;
+        gl_Position=projectionMatrix*point;
+      }
+    `,
+    fragmentShader:`
+      ${fishRoomLightSource}
+      uniform sampler2D uFishDressLace;
+      varying vec2 vDressUv;
+      varying vec3 vDressN;
+      varying vec3 vDressP;
+      void main() {
+        float t=vDressUv.y;
+        float theta=vDressUv.x;
+        vec3 N=normalize(vDressN);
+        vec3 key=fishLightDirection(uFishKeyWorld,vDressP,N);
+        vec3 fill=fishLightDirection(uFishFillWorld,vDressP,N);
+        float light=0.69+0.19*fishRoomDiffuse(N,key,0.47)+0.13*fishRoomDiffuse(N,fill,0.58);
+        float pleat=0.5+0.5*cos(theta*21.8+0.18);
+        float foldShade=0.74+0.26*pleat;
+        float topShadow=mix(0.78,1.0,smoothstep(0.09,0.61,t));
+        vec3 navy=vec3(0.047,0.064,0.154)*light*foldShade*topShadow;
+        float atlasU=theta*2.55+0.29;
+        float goldY=mix(0.76,0.49,smoothstep(0.49,0.79,t));
+        float thread=texture2D(uFishDressLace,vec2(atlasU,goldY)).b;
+        float rolledEdge=smoothstep(0.75,0.80,t)*(1.0-smoothstep(0.80,0.836,t));
+        navy=mix(navy,navy*0.68,rolledEdge);
+        float embroidery=thread*smoothstep(0.48,0.55,t)*(1.0-smoothstep(0.77,0.82,t));
+        float thinBorder=0.28*smoothstep(0.735,0.745,t)*(1.0-smoothstep(0.750,0.766,t));
+        vec3 gold=vec3(0.69,0.463,0.218)*light;
+        vec3 cloth=mix(navy,gold,max(embroidery*0.94,thinBorder));
+
+        // Scalloped ruffle hem: follows physical pleat ridges rather than a flat horizontal cut
+        float hemCut=0.806-0.014*pleat;
+        float ivoryBand=smoothstep(hemCut-0.005,hemCut+0.005,t);
+        float laceY=mix(0.42,0.135,clamp((t-hemCut)/(1.0-hemCut),0.0,1.0));
+        vec4 lace=texture2D(uFishDressLace,vec2(atlasU,laceY));
+
+        // Off-white ruffled petticoat with soft ivory recess shadow and crisp crest highlights
+        float crest=smoothstep(0.14,0.79,pleat);
+        float clothDepth=smoothstep(hemCut+0.014,hemCut+0.049,t);
+        vec3 ivoryPeak=vec3(0.943,0.880,0.822);
+        vec3 ivoryValley=vec3(0.516,0.473,0.526);
+        vec3 ivory=mix(ivoryValley,ivoryPeak,crest)*light*(0.84+0.16*lace.a);
+        float crease=(1.0-smoothstep(0.035,0.24,pleat))*clothDepth;
+        ivory*=1.0-0.17*crease;
+        ivory=mix(ivory,ivory*vec3(0.73,0.68,0.77),lace.g*0.34);
+        ivory*=mix(0.79,1.0,clothDepth);
+        float rolledPurl=smoothstep(0.953,0.985,t);
+        ivory=mix(ivory,ivoryPeak*light,rolledPurl*(0.23+0.26*crest));
+
+        cloth=mix(cloth,ivory,ivoryBand);
+        gl_FragColor=vec4(cloth,1.0);
+        #include <colorspace_fragment>
+      }
+    `
+  });
+  const panel=new THREE.Mesh(geometry,material);
+  panel.name='FishRearDressPanel';
+  rig.skeleton.bones[0].add(panel);
+}
+
 window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorld, fillWorld, yieldPaint} = {}) {
   const rootGroup = new THREE.Group();
   const isSideLight = false, isWireframe = false;
@@ -8897,6 +9326,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
   const gaze = {value: new THREE.Vector2()};
   const eyeFocus = {value: new THREE.Vector2()};
   const faceState = {value: new THREE.Vector4(0,0,0,0)};
+  const playfulFace = {value: new THREE.Vector3()};
   const faceDetailUniforms = {
     uFishFaceDetail: {value: null},
     uFishFaceDetailStrength: {value: 0},
@@ -8930,13 +9360,15 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       varying vec3 vStudioHair;
       attribute vec3 color;
       attribute float aCupSleeve;
-      attribute float aWaveTuck;
-      uniform float uArmPresentation;
+      attribute vec2 aWaveTuck;
+      uniform vec2 uArmPresentation;
+      uniform vec3 uPlayfulFace;
       attribute vec2 aSidePolish;
       attribute vec3 aTressInfo;
       varying vec3 vTressInfo;
       varying vec2 vSidePolish;
       varying float vCupSleeve;
+      varying float vFreeSleeve;
       attribute float aFrontWeight;
       attribute vec2 aFrontUV;
       attribute float aBackWeight;
@@ -8958,6 +9390,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       void main() {
         vColor = color;
         vCupSleeve = aCupSleeve;
+        vFreeSleeve = aWaveTuck.y;
         vSidePolish = aSidePolish;
         vTressInfo = aTressInfo;
         vLocalPos = position;
@@ -8973,7 +9406,16 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
         #include <beginnormal_vertex>
         #include <skinnormal_vertex>
         #include <begin_vertex>
-        transformed += vec3(${fishWaveTuckDirection.join(',')}) * (aWaveTuck*uArmPresentation);
+        transformed += vec3(${fishWaveTuckDirection.join(',')}) * (aWaveTuck.x*uArmPresentation.x);
+        transformed += vec3(0.072,0.003,-0.065) * (aWaveTuck.y*uArmPresentation.y);
+        if (uPlayfulFace.x > 0.0 && aFrontWeight > 0.0) {
+          vec2 facePixel=aFrontUV*vec2(174.0,244.0);
+          bool right=facePixel.x>66.0;
+          vec2 cheek=(facePixel-(right ? vec2(89.2,106.6) : vec2(45.1,106.7)))/vec2(11.2,6.0);
+          float skin=smoothstep(0.028,0.12,color.r-color.b);
+          float puff=(1.0-smoothstep(0.14,1.05,length(cheek)))*skin*aFrontWeight*uPlayfulFace.x;
+          transformed += vec3(right ? 0.004 : -0.004,-0.0005,0.0075)*puff;
+        }
         #include <skinning_vertex>
         vRigNormal = normalize(objectNormal);
         vStudioNormal = normalize(normalMatrix * objectNormal);
@@ -8992,6 +9434,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       uniform vec2 uGaze;
       uniform vec2 uEyeFocus;
       uniform vec4 uFaceState;
+      uniform vec3 uPlayfulFace;
       varying vec3 vRigNormal;
       varying vec3 vStudioNormal;
       varying vec3 vStudioPos;
@@ -9040,8 +9483,9 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       uniform sampler2D uSideTex;
       uniform sampler2D uSideMask;
       uniform int uHasSideTex;
-      uniform float uArmPresentation;
+      uniform vec2 uArmPresentation;
       varying float vCupSleeve;
+      varying float vFreeSleeve;
       varying vec2 vSidePolish;
       uniform int uLightMode;
       uniform vec3 uSunDir;
@@ -9162,6 +9606,68 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
               finalCol = mix(finalCol, toneMatchedTex, applyWeight);
             }
           }
+          // Sample the same portrait independently of the legacy projection
+          // weight, which is zero on the ends of the longest locks.
+          float looseEnds = smoothstep(0.56,0.80,vBackUV.y);
+          vec2 paintUV = vec2(0.436 + (vBackUV.x - 0.49)*mix(0.88,0.965,looseEnds),
+            vBackUV.y*0.92 - 0.015);
+          vec2 paintDx = dFdx(paintUV), paintDy = dFdy(paintUV);
+          vec3 p = vLocalPos;
+          float rearPigment = smoothstep(0.027,0.090,baseCol.b-baseCol.r)
+            * smoothstep(0.016,0.045,baseCol.b-baseCol.g);
+          float rearDepth = smoothstep(0.050,0.145,-p.z);
+          float hairHeight = smoothstep(-0.443,-0.370,p.y)*(1.0-smoothstep(0.315,0.392,p.y));
+          float sideBlend = 1.0-smoothstep(0.340,0.480,abs(p.x));
+          float rearNormal = max(smoothstep(-0.25,0.45,-vLocalNormal.z), vTressInfo.x*0.82);
+          float clothGuard = 1.0-smoothstep(0.20,0.60,vSidePolish.y);
+          float paintedRegion = rearPigment*rearDepth*hairHeight*sideBlend*rearNormal*clothGuard;
+          vec2 wrapUV = vec2(0.462-1.14*p.z,0.470-0.88*p.y);
+          vec2 wrapDx = dFdx(wrapUV), wrapDy = dFdy(wrapUV);
+          if (paintedRegion > 0.002) {
+            vec4 paint = fishSamplePortrait(uBackTex, paintUV, paintDx, paintDy);
+            // The source feathered the whole lower row. Restore opaque interior
+            // pigment while keeping the silhouette and gaps transparent.
+            float sourceFade = clamp((0.822-paintUV.y)/0.169,0.08,1.0);
+            float opaqueHair = smoothstep(0.64,0.90,paint.a/sourceFade);
+            float luma = dot(paint.rgb,vec3(0.299,0.587,0.114));
+            float blueInk = smoothstep(0.032,0.085,paint.b-paint.r)
+              * smoothstep(0.015,0.048,paint.b-paint.g);
+            float hairInk = (1.0-smoothstep(0.055,0.22,luma))
+              * smoothstep(0.012,0.034,paint.b-paint.r);
+            float paintedTail = smoothstep(0.598,0.657,paintUV.x)*smoothstep(0.609,0.684,paintUV.y);
+            float hairMask = opaqueHair*max(blueInk,hairInk)*(1.0-0.97*paintedTail);
+            float expectedTone = mix(0.135,0.319,smoothstep(0.575,0.774,paintUV.y));
+            float curlInk = smoothstep(0.012,0.075,expectedTone-luma)*(0.45 + 0.55*looseEnds);
+            vec3 finalRearPaint = paint.rgb*(1.0-0.24*curlInk);
+
+            rearArtWeight = paintedRegion * hairMask;
+            rearArt = finalRearPaint;
+          }
+
+          float sideSurface = smoothstep(0.119,0.268,abs(p.x))
+            * max(0.60,smoothstep(0.16,0.77,abs(vLocalNormal.x)));
+          float wrapZone = rearPigment*hairHeight*clothGuard*sideSurface
+            * smoothstep(0.044,0.110,-p.z)*(1.0-smoothstep(0.17,0.64,fWeight))
+            * (1.0-0.64*smoothstep(0.118,0.272,p.y))
+            * (1.0-0.89*smoothstep(0.18,0.65,vLocalNormal.z));
+          if (uHasSideTex == 1 && wrapZone > 0.002) {
+            vec4 sidePaint = fishSamplePortrait(uSideTex,wrapUV,wrapDx,wrapDy);
+            vec4 sideRegion = fishSamplePortrait(uSideMask,wrapUV,wrapDx,wrapDy);
+            float sideLake = smoothstep(0.031,0.082,sidePaint.b-sidePaint.r)
+              * smoothstep(0.013,0.036,sidePaint.b-sidePaint.g);
+            float outline = (1.0-smoothstep(0.066,0.20,dot(sidePaint.rgb,vec3(0.299,0.587,0.114))))
+              * smoothstep(0.011,0.041,sidePaint.b-sidePaint.r);
+            float artTail = smoothstep(0.700,0.783,wrapUV.x)*smoothstep(0.655,0.753,wrapUV.y);
+            float sideMask = smoothstep(0.16,0.76,sideRegion.r)
+              * (1.0-smoothstep(0.04,0.39,max(sideRegion.g,sideRegion.b)));
+            float finInk = (1.0-smoothstep(0.613,0.669,wrapUV.x))
+              * smoothstep(0.349,0.391,wrapUV.y)*(1.0-smoothstep(0.460,0.522,wrapUV.y));
+            float sideWeight = wrapZone*sideMask*smoothstep(0.54,0.89,sidePaint.a)
+              * max(sideLake,outline)*(1.0-max(0.98*artTail,0.92*finInk));
+            float rearWeight = rearArtWeight;
+            rearArt = mix(rearArt,sidePaint.rgb,sideWeight/max(0.001,sideWeight+rearWeight));
+            rearArtWeight = 1.0-(1.0-rearWeight)*(1.0-sideWeight);
+          }
         }
 
         // 4. 正面原画投影（高置信正脸与正面绝对优先，完全保留 0°/25°/45° 质感与五官）
@@ -9187,6 +9693,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
         FishPortraitFootprint faceFootprint = fishPortraitFootprint(vFrontUV);
         if (uHasFrontTex == 1 && fWeight > 0.001) {
           vec4 fTex = fishPaintFace(uFrontTex, vFrontUV, uGaze, uEyeFocus, uFaceState, faceFootprint);
+          fTex.rgb = fishPaintPlayfulFace(fTex.rgb,vFrontUV*fishPortraitSize,uGaze,uFaceState,uPlayfulFace,faceFootprint);
           fTex.rgb = fishPaintApron(fTex.rgb,vFrontUV,faceFootprint,normalize(vStudioNormal),vStudioPos);
           // The front painting crosses the fold underneath the right bow.
           // Suppress its pale pigment only where the underlying lock is blue.
@@ -9223,8 +9730,116 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
         finalCol = fishPolishSideLock(finalCol,baseCol,vLocalPos,
           normalize(vStudioNormal),vStudioPos,vFrontFacing);
         finalCol = fishShadeCrown(finalCol,baseCol,vLocalPos,normalize(vStudioNormal),vStudioPos);
-        // Keep the reference hue while shading each overlapping lock.
-        finalCol = mix(finalCol,rearArt,rearArtWeight*0.205*(1.0-0.96*fWeight));
+        // Authoritative rear-illustration hair paint pass: preserves authentic S-lock curves,
+        // tapered curly tips, and dark linework with subtle ambient room lighting on pigment.
+        vec3 roomLitRearArt = rearArt * mix(vec3(1.0), clamp(finalCol / max(baseCol * 1.2 + 0.05, vec3(0.22)), 0.70, 1.25), 0.20);
+        float authoritativeRearWeight = clamp(rearArtWeight * 0.97 * (1.0 - 0.96 * fWeight), 0.0, 1.0);
+        finalCol = mix(finalCol, roomLitRearArt, authoritativeRearWeight);
+        {
+          vec3 p = vLocalPos;
+          float rearCrownY = smoothstep(0.242,0.322,p.y)*(1.0-smoothstep(0.419,0.462,p.y));
+          float scalpBridge = (1.0-smoothstep(-0.076,0.048,p.z))*smoothstep(0.305,0.365,p.y);
+          float rearCrownZ = max(1.0-smoothstep(-0.106,-0.010,p.z),0.91*scalpBridge);
+          float backPaint = rearCrownY*rearCrownZ
+            *(1.0-0.70*authoritativeRearWeight)*(1.0-smoothstep(0.07,0.58,fWeight));
+          float tuft = smoothstep(0.376,0.421,p.y)*smoothstep(0.084,0.132,p.z)
+            *(1.0-smoothstep(-0.082,-0.028,p.x));
+          float baseBlue = smoothstep(0.033,0.087,baseCol.b-baseCol.r)
+            *smoothstep(0.017,0.053,baseCol.b-baseCol.g);
+          float paintBlue = smoothstep(0.053,0.118,finalCol.b-finalCol.r)
+            *smoothstep(0.030,0.074,finalCol.b-finalCol.g);
+          float blueFiber = max(baseBlue,0.89*paintBlue);
+          float paleGuard = 1.0-smoothstep(0.215,0.355,min(baseCol.r,baseCol.g));
+          float crownWeight = max(backPaint,tuft*0.88)*blueFiber*paleGuard;
+          if (crownWeight>0.001) {
+            vec3 hairBlue = vec3(0.069,0.104,0.369);
+            float shade = dot(finalCol,vec3(0.2126,0.7152,0.0722));
+            float relief = clamp(0.98+(shade-0.132)*1.95,0.77,1.13);
+            float rooted = smoothstep(0.322,0.434,p.y);
+            float light = (0.93+0.09*rooted)*relief;
+            vec3 roomCrown = hairBlue*light;
+            finalCol = mix(finalCol,roomCrown,crownWeight*0.96);
+          }
+        }
+
+        {
+          vec3 p = vLocalPos;
+          float lateral = smoothstep(0.172,0.234,-p.x);
+          float run = smoothstep(-0.284,-0.218,p.y)*(1.0-smoothstep(0.249,0.315,p.y));
+          float depth = smoothstep(-0.164,-0.066,p.z)*(1.0-smoothstep(0.196,0.247,p.z));
+          float frontLock = lateral*run*depth;
+          float tags = max(vSidePolish.x,vTressInfo.x);
+          float temple = smoothstep(0.043,0.128,p.y)*smoothstep(0.039,0.093,p.z)
+            * (1.0-smoothstep(0.320,0.370,-p.x));
+          float looseLock = smoothstep(0.222,0.276,-p.x)
+            * (1.0-smoothstep(0.080,0.152,p.y));
+          float hairIdentity = max(tags,max(temple,looseLock)*0.94);
+          float originalBlue = smoothstep(0.048,0.128,baseCol.b-baseCol.r)
+            * smoothstep(0.019,0.074,baseCol.b-baseCol.g);
+          float whiteFin = smoothstep(0.285,0.325,-p.x)
+            * smoothstep(0.075,0.112,p.y)*(1.0-smoothstep(0.175,0.207,p.y))
+            * smoothstep(-0.027,0.034,p.z);
+          float lightFabric = smoothstep(0.214,0.487,min(finalCol.r,finalCol.g));
+          float ribbonBlue = smoothstep(0.063,0.146,baseCol.g-baseCol.r)
+            * smoothstep(0.101,0.181,p.y)*(1.0-smoothstep(0.224,0.266,p.y));
+          float cloth = smoothstep(0.09,0.43,vSidePolish.y);
+          float lockWeight = frontLock*hairIdentity*originalBlue
+            * (1.0-max(max(whiteFin,lightFabric),max(cloth,0.84*ribbonBlue)))
+            * (1.0-0.84*authoritativeRearWeight);
+
+          vec2 lockSideDx=dFdx(vSideUV), lockSideDy=dFdy(vSideUV);
+          vec2 lockFrontDx=dFdx(vFrontUV), lockFrontDy=dFdy(vFrontUV);
+          if (lockWeight>0.002) {
+            float ends=1.0-smoothstep(-0.237,0.097,p.y);
+            vec3 roots=vec3(0.061,0.096,0.333);
+            vec3 tips=vec3(0.112,0.196,0.454);
+            vec3 pigment=mix(roots,tips,ends*ends);
+            if (uHasSideTex == 1) {
+              vec4 portrait=fishSamplePortrait(uSideTex,vSideUV,lockSideDx,lockSideDy);
+              vec4 region=fishSamplePortrait(uSideMask,vSideUV,lockSideDx,lockSideDy);
+              float sideBlue=smoothstep(0.060,0.135,portrait.b-portrait.r)
+                * smoothstep(0.018,0.055,portrait.b-portrait.g);
+              float sideInk=smoothstep(0.052,0.146,portrait.b);
+              float drawnFin=(1.0-smoothstep(0.54,0.67,vSideUV.x))
+                *smoothstep(0.354,0.392,vSideUV.y)*(1.0-smoothstep(0.449,0.489,vSideUV.y));
+              float drawnTail=smoothstep(0.704,0.780,vSideUV.x)
+                *smoothstep(0.646,0.757,vSideUV.y);
+              float sideConfidence=sideBlue*sideInk*smoothstep(0.54,0.89,portrait.a)
+                * smoothstep(0.28,0.79,region.r)*(1.0-max(region.g,region.b))
+                * (1.0-max(drawnFin,0.94*drawnTail));
+              pigment=mix(pigment,portrait.rgb,sideConfidence*0.68);
+            }
+            if (uHasFrontTex == 1) {
+              vec4 portrait=fishSamplePortrait(uFrontTex,vFrontUV,lockFrontDx,lockFrontDy);
+              float frontBlue=smoothstep(0.067,0.153,portrait.b-portrait.r)
+                * smoothstep(0.023,0.073,portrait.b-portrait.g);
+              float reliable=smoothstep(0.05,0.55,max(fWeight,temple*0.73))
+                * smoothstep(0.62,0.94,portrait.a)*frontBlue;
+              reliable*=smoothstep(0.028,0.129,p.z)
+                * smoothstep(0.138,0.248,portrait.b);
+              pigment=mix(pigment,portrait.rgb,reliable*0.79);
+            }
+
+            float curve=atan(p.z+0.023,0.033-p.x);
+            float phase=curve*13.5+0.96*sin(ends*6.0-0.73)+0.55*ends;
+            float lockFace=0.5+0.5*cos(phase);
+            float valley=(1.0-smoothstep(0.04,0.42,lockFace))
+              * smoothstep(0.10,0.34,ends)*(1.0-smoothstep(0.92,1.0,ends));
+            vec3 n=normalize(vStudioNormal);
+            vec3 key=fishLightDirection(uFishKeyWorld,vStudioPos,n);
+            float lit=fishRoomDiffuse(n,key,0.50);
+            float shape=clamp(1.0+(dot(finalCol,vec3(0.2126,0.7152,0.0722))-0.148)*1.16,0.83,1.13);
+            float templeRun=smoothstep(-0.069,0.233,p.y);
+            float seamCurve=0.278+0.245*sin(2.79*templeRun)+0.094*templeRun;
+            float seamDistance=(curve-seamCurve)/0.068;
+            float seam=exp2(-1.16*seamDistance*seamDistance)
+              *smoothstep(-0.058,0.052,p.y)*(1.0-smoothstep(0.201,0.272,p.y))
+              *smoothstep(0.058,0.123,p.z);
+            float strokes=0.87+0.17*lit+0.080*lockFace-0.18*valley-0.21*seam;
+            vec3 lockPaint = pigment*shape*strokes;
+            finalCol=mix(finalCol,lockPaint,clamp(lockWeight*1.06,0.0,0.94));
+          }
+        }
         finalCol = fishShadeEarFin(finalCol,vLocalPos,normalize(vStudioNormal),vStudioPos);
         finalCol = fishShadeTailHem(finalCol, vLocalPos, vLocalNormal, vSidePolish.y, fWeight);
 
@@ -9247,12 +9862,13 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
           finalCol *= halfLambert;
         }
 
-        if (uArmPresentation > 0.0) {
-          float distal = smoothstep(0.16,0.46,vCupSleeve) * (1.0-smoothstep(-0.145,-0.102,vLocalPos.y));
+        if (max(uArmPresentation.x,uArmPresentation.y) > 0.0) {
+          float cupSleeve = smoothstep(0.16,0.46,vCupSleeve) * (1.0-smoothstep(-0.145,-0.102,vLocalPos.y));
+          float distal = max(cupSleeve*uArmPresentation.x,smoothstep(0.12,0.48,vFreeSleeve)*uArmPresentation.y);
           float lightPigment = smoothstep(0.11,0.37,min(min(finalCol.r,finalCol.g),finalCol.b));
           float sideShade = 0.86+0.22*clamp(normalize(vLocalNormal).z,0.0,1.0);
           vec3 navy = vec3(0.047,0.055,0.142)*sideShade;
-          finalCol = mix(finalCol,navy,distal*uArmPresentation*(0.75+0.25*lightPigment));
+          finalCol = mix(finalCol,navy,distal*(0.75+0.25*lightPigment));
         }
         gl_FragColor = vec4(finalCol, 1.0);
         #include <colorspace_fragment>
@@ -9279,6 +9895,26 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
         fishSideGroomNormals[i + 2] / 32767, fishSideGroomNormals[i + 3] / 32767);
     }
     applyFishRearLockSculpt(geometry,rearSculpt);
+    {
+      // Apply the taper to the existing rear groom, fading away from its surface.
+      const { position, color, aFrontWeight } = geometry.attributes;
+      const sculpt = new DataView(rearSculpt.buffer, rearSculpt.byteOffset, rearSculpt.byteLength);
+      const smooth = THREE.MathUtils.smoothstep;
+      const moved = sculpt.getUint32(0, true);
+      for (let n = 0; n < moved; n++) {
+        const i = sculpt.getUint16(8 + n*14, true);
+        const x = position.getX(i), y = position.getY(i), z = position.getZ(i);
+        const pigment = smooth(color.getZ(i) - color.getX(i), 0.034, 0.095);
+        const guard = smooth(-z, 0.105, 0.156) * (1 - smooth(aFrontWeight.getX(i), 0.024, 0.20));
+        const length = smooth(y, -0.433, -0.399) * (1 - smooth(y, 0.072, 0.115));
+        const weight = pigment * guard * length;
+        const along = THREE.MathUtils.clamp((0.08-y)/0.52, 0, 1);
+        const bend = Math.sin(along * 5.2 + x * 4.4) * 0.0075 * along;
+        const taper = Math.sin(along * Math.PI) * 0.006;
+        position.setXYZ(i, x + bend*weight, y, z - taper*weight);
+      }
+    }
+    await applyFishWrapClearance(geometry);
     applyFishAnkleWeights(geometry);
     const { min, max, height } = window.FISH_BAKED_BOUNDS;
     const bMin = new THREE.Vector3().fromArray(min);
@@ -9301,8 +9937,9 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
         uFishHemProfile: {value: createFishHemProfileTexture(THREE)},
         uFishLaceAtlas: {value: laceAtlas.color},
         uFishLaceSlope: {value: laceAtlas.slope},
-        uArmPresentation: { value: 0 },
+        uArmPresentation: { value: new THREE.Vector2() },
         uFaceState: faceState,
+        uPlayfulFace: playfulFace,
         uHasFrontTex: { value: frontCanvasTexture ? 1 : 0 },
         uBackTex: { value: backCanvasTexture },
         uHasBackTex: { value: backCanvasTexture ? 1 : 0 },
@@ -9324,8 +9961,10 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     const neutralBody = modelMeshes[0];
     if (modelMeshes.length !== 2 || !refImageData) throw new Error('角色绑定需要完整模型与正面原画');
     bodyRig = createFishBodyRig(THREE, neutralBody, modelMeshes[1], rootGroup);
+    addFishRearDressPanel(THREE, bodyRig, laceAtlas.color, roomLight);
     modelMeshes[0] = bodyRig.body;
     bodyRig.greetingSleeve = createFishGreetingSleeve(THREE,bodyRig,rootGroup);
+    bodyRig.freeSleeve = createFishGreetingSleeve(THREE,bodyRig,rootGroup,bodyRig.freeArm);
     if (yieldPaint) await yieldPaint();
     const surface = createFishFaceSurface(THREE, neutralBody, {
       min: bMin, max: bMax, refX0: PROJ_CALIB.refX0, refX1: PROJ_CALIB.refX1,
@@ -9337,6 +9976,8 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     if (yieldPaint) await yieldPaint();
     mouthRig = createFishMouthRig(THREE, bodyRig.head, surface, mouthArtTexture, frontCanvasTexture);
     bodyRig.mouthSocket = mouthRig.socket;
+    bodyRig.chinPointSocket = surface.point(57.5,116.0,.010).sub(surface.headRestPosition);
+    bodyRig.chinPalmSocket = surface.point(55.6,116.7,.011).sub(surface.headRestPosition);
     attachFishRibbons(THREE, bodyRig.head, surface.headRestPosition, mouthArtTexture, bMin, bMax, PROJ_CALIB, roomLight);
     bodyRig.head.add(createFishHeadLace(THREE,roomLight));
     const setLidWeights = faceRig.set;
@@ -9346,6 +9987,7 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
       const soft=THREE.MathUtils.clamp(pose.eyeSmile ?? pose.smile ?? 0,0,1);
       const joy=THREE.MathUtils.clamp(pose.eyeJoy ?? pose.smile ?? 0,0,soft);
       faceState.value.set(pose.blinkLeft || 0, pose.blinkRight || 0, soft, joy);
+      playfulFace.value.set(pose.cheeks ?? 0,pose.stars ?? 0,pose.brow ?? 0);
     };
     const eyeHalfSpan = 0.5 * (fishEyeProfiles[1].iris[0] - fishEyeProfiles[0].iris[0])
       * (bMax.x - bMin.x) / (PROJ_CALIB.refX1 - PROJ_CALIB.refX0);
@@ -13344,7 +13986,9 @@ window.loadApprovedFishModel = async function(renderer, {lowEnd = false, keyWorl
     const chaseTail=createFishPivot(stageX,stageZ,stageYaw,-2*Math.PI,2.55);
     const curiousAct={phase:'tailCuriosity',name:'tailCuriosity',seconds:chaseTail.pace.seconds};
     const lookUpAct={phase:'lookUp',name:'lookUp',seconds:1.98};
-    const visitActs=[...acts,pleasedAct,curiousAct,lookUpAct,dashAct];
+    const expressionActs=Object.entries(fishExpressionSeconds).map(([name,duration])=>
+      ({phase:name,name,seconds:duration+0.18}));
+    const visitActs=[...acts,pleasedAct,curiousAct,lookUpAct,dashAct,...expressionActs];
     const briefActs = visitActs.filter(action => action.phase !== 'art');
     const anchor = new THREE.Group();
     anchor.userData.fishDynamic = 'fish';
