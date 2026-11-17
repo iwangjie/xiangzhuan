@@ -104,6 +104,12 @@ open -g /Applications/香篆.app
 - `.github/workflows/release.yml` 用 `macos-15`（arm64）与 `macos-15-intel`（x86_64）两个 runner。本地 nsh 只有本机架构的 runner，交叉打包会报错，不要改回单 job。
 - 归档必须在 `install-dock-hide.sh` 之后重新 `tar`：`nsh package` 在注入 dylib 前就写好了它自己的 archive。
 - 每次发版 `version` 与 `build` 一起涨；OTA 包的 build 必须高于已安装外壳的 build。`nsh publish --min-runtime 0.5.0` 固定最低运行时，避免新 CLI 抬高门槛后老外壳拒收。
+- 发布通道由 `release.yml` 按「上一个 tag → 当前 tag」的 diff 自动选，不手选：
+  - **热更包**：`latest.json` 只有 `package`，`platforms` 为空。适用于只改 `src/**`、`test/rest-shrine.html`（及其生成的 `src/shrine-html.ts`）、`assets/tray.svg`、`theme.json`、文案/样式/计时/规则这类随 JS 包走的代码。客户端只下 `.nshpkg`，不换壳。
+  - **壳更新**：`latest.json` 只有 `platforms`，没有 `package`。diff 命中 `native/**`、`scripts/install-dock-hide.sh`、`assets/icon.png`，或 `nsh.json` 除 `version`/`build` 外的任何字段（capabilities、Info.plist、window、updater 等）时自动走这条。客户端下完整 `.app`；DMG 仍附在 Release 页给新用户。
+  - 一个 manifest 只能有一个通道。以前两者同时发布会导致「先装包、再换壳」两次重启，不要改回去。
+  - 用了旧壳没有的 nsh 宿主 API 时按壳发布；必要时提高 `--min-runtime`，让旧壳拒绝包，而不是跑到不存在的 API。通道判定只看 diff，这一点需要人判断。
+  - 判定依赖完整历史与 tag，所以 release job 的 checkout 必须保持 `fetch-depth: 0`。
 - 已推送的 tag 不要重打；`gh release delete --cleanup-tag=false` 只重发资产，tag 不变。
 - 更新必须静默：`checkForUpdates()` 下载完直接 `restartToPackage` / `installAndRestart`，不弹确认、不等按钮；唯一例外是 `phase() === "rest"`，等休息结束再重启，避免打断锁定休息。新增更新 UI 不要加「立即更新」这类必需交互。
 - 仓库变量 `MIRROR_PREFIX` 可把归档与 nshpkg 的 URL 指到 GitHub 镜像（如 `https://gh-proxy.com/https://github.com/iwangjie/xiangzhuan/releases/download`）；留空即回 GitHub。manifest 本身仍从 GitHub 取，nsh 只有一个更新源，没有运行时回退。

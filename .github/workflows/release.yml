@@ -56,10 +56,39 @@ jobs:
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The update channel is decided from the diff against the previous
+          # tag, so the release job needs the tags and the history.
+          fetch-depth: 0
       - name: Install nsh
         run: |
           curl -fsSL https://nsh.dev/install.sh | sh -s -- --nightly
           echo "$HOME/.nsh/bin" >> "$GITHUB_PATH"
+      - name: Choose the update channel
+        id: channel
+        run: |
+          previous=$(git describe --tags --abbrev=0 "$GITHUB_REF_NAME^" 2>/dev/null || true)
+          shell=false
+          if [ -z "$previous" ]; then
+            shell=true
+          else
+            # Host-side code: the native dylib, its installer script and the
+            # app icon cannot travel inside an .nshpkg.
+            if git diff --name-only "$previous" "$GITHUB_REF_NAME" -- \
+                 native scripts/install-dock-hide.sh assets/icon.png | grep -q .; then
+              shell=true
+            fi
+            # Any nsh.json change except the release counters changes the
+            # packaged host (capabilities, Info.plist, window, updater).
+            if git diff -U0 "$previous" "$GITHUB_REF_NAME" -- nsh.json \
+               | grep -E '^[+-][^+-]' \
+               | grep -vE '^[+-][[:space:]]*"(version|build)"[[:space:]]*:' \
+               | grep -q .; then
+              shell=true
+            fi
+          fi
+          echo "shell=$shell" >> "$GITHUB_OUTPUT"
+          echo "previous tag: ${previous:-none}; channel: $([ "$shell" = true ] && echo shell || echo package)"
       - name: Collect artifacts
         uses: actions/download-artifact@v4
         with:
@@ -99,17 +128,33 @@ jobs:
           if [ -n "$MIRROR_PREFIX" ]; then
             base=(--base-url "$MIRROR_PREFIX/$GITHUB_REF_NAME")
           fi
-          nsh update-manifest dist/*.tar.gz \
-            --package "$package" \
-            --notes NOTES.md \
-            "${base[@]}" \
-            --key "$RUNNER_TEMP/keys/update.secret" \
-            -o dist
-          test "$(jq -r '.platforms | keys | sort | join(",")' dist/latest.json)" = "macos-aarch64,macos-x86_64"
-          test -n "$(jq -r '.package.build' dist/latest.json)"
+          if [ "${{ steps.channel.outputs.shell }}" = "true" ]; then
+            # A shell release carries the app itself; a package in the same
+            # manifest would make clients install code first and the shell
+            # second, with two restarts.
+            nsh update-manifest dist/*.tar.gz \
+              --notes NOTES.md \
+              "${base[@]}" \
+              --key "$RUNNER_TEMP/keys/update.secret" \
+              -o dist
+            jq -e \
+              '(.platforms | keys | sort) == ["macos-aarch64","macos-x86_64"]
+               and .package == null' dist/latest.json
+            rm -f "$package"
+          else
+            # A code-only release: the manifest has no platform archives, so
+            # a client never replaces its shell for a JS change.
+            nsh update-manifest \
+              --package "$package" \
+              --notes NOTES.md \
+              "${base[@]}" \
+              --key "$RUNNER_TEMP/keys/update.secret" \
+              -o dist
+            jq -e '(.platforms | length) == 0 and .package.build != null' dist/latest.json
+          fi
           if [ -n "$MIRROR_PREFIX" ]; then
             jq -e --arg p "$MIRROR_PREFIX/$GITHUB_REF_NAME/" \
-              '([.platforms[].url, .package.url] | map(startswith($p)) | all)' dist/latest.json
+              '([.platforms[].url, (.package.url // empty)] | map(startswith($p)) | all)' dist/latest.json
           fi
       - name: Publish
         env:
