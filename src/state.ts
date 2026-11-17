@@ -157,7 +157,7 @@ export const phaseLine = computed(() => {
   switch (phase()) {
     case "focus":
       if (paused()) return "已暂停，点继续。";
-      return idlePaused() ? "空闲已暂停，操作键鼠后继续。" : "香正在燃，别急。";
+      return idlePaused() ? "空闲已暂停，操作键鼠后继续。" : "";
     case "rest":
       return restForced() || restInputLocked() ? "这炷香，要燃尽。" : "把眼睛从屏幕上移开。";
     case "postpone":

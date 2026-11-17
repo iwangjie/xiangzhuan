@@ -1,9 +1,11 @@
 import { cleanup, computed, effect, keymap, lifecycle, untracked } from "nsh";
 import { Menu, Tray, Window, type MenuItem } from "nsh/desktop";
+import { shellInfo } from "nsh/updater";
 import trayIcon from "../assets/tray.svg";
 import { readInputActivity } from "./input-activity";
 import { ensureLoginItem, setLoginItem } from "./login-item";
 import { rememberTrayBounds } from "./popover";
+import { checkForUpdates } from "./updates";
 import {
   canPostponeNow,
   canSkipNow,
@@ -174,6 +176,19 @@ export function Shell() {
 
   effect(() => {
     Menu.setApplicationMenu(appMenu());
+  });
+
+  // Packaged apps look for a code package first, then a new app build. A
+  // development run has neither, so it never asks the network on its own.
+  effect(() => {
+    if (!settingsLoaded()) return;
+    if (!shellInfo().packages) return;
+    const first = setTimeout(() => void checkForUpdates({ quiet: true }), 3000);
+    const every = setInterval(() => void checkForUpdates({ quiet: true }), 6 * 60 * 60_000);
+    cleanup(() => {
+      clearTimeout(first);
+      clearInterval(every);
+    });
   });
 
   // 启动即进入专注；用菜单/快捷键暂停，而不是要求用户手动开始。
