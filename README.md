@@ -97,7 +97,7 @@ hdiutil create -volname "香篆" -srcfolder /tmp/xiangzhuan-dmg -ov -format UDZO
 
 大文件默认走 GitHub；仓库变量 `MIRROR_PREFIX` 设为 GitHub 镜像前缀（例如 `https://gh-proxy.com/https://github.com/iwangjie/xiangzhuan/releases/download`）后，归档与 nshpkg 的下载 URL 会指向该镜像，清单仍从 GitHub 取。nsh 的更新源只有一个，镜像不可用时没有运行时回退，删掉变量后的下一次发版即恢复 GitHub 直连。
 
-每次发版同时递增 `version` 与 `build`。已安装外壳只接受 build 更高的包，回滚保护会记住已接受过的最高 build。应用启动 3 秒后自动检查（每 6 小时一次）：先找 OTA 包，没有再找整包；「规则 → 版本」可手动检查并重启进入新包。
+每次发版同时递增 `version` 与 `build`。已安装外壳只接受 build 更高的包，回滚保护会记住已接受过的最高 build。应用启动 3 秒后自动检查（每 6 小时一次）：先找 OTA 包，没有再找整包；找到后静默下载并自动重启，不弹确认。休息进行中会等休息结束后再重启。「设置 → 版本」只显示当前版本与下载进度。
 
 ## 结构
 

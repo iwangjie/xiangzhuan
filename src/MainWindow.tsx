@@ -49,13 +49,11 @@ import {
 } from "./state";
 import { setLoginItem } from "./login-item";
 import {
-  appUpdate,
+  applying,
   checkForUpdates,
   checking,
-  installAppUpdate,
-  packageReady,
+  pendingVersion,
   progress,
-  restartIntoPackage,
   updateError,
 } from "./updates";
 import { placeMainWindow } from "./popover";
@@ -68,7 +66,7 @@ const POSTPONE_OPTIONS = [5, 10, 15] as const;
 const TABS = [
   { id: "timer", label: "计时" },
   { id: "rhythm", label: "节奏" },
-  { id: "rules", label: "规则" },
+  { id: "settings", label: "设置" },
 ] as const;
 type TabId = (typeof TABS)[number]["id"];
 
@@ -203,9 +201,6 @@ export function MainWindow() {
           <Text class="text-[13px] font-semibold tracking-[0.02em] text-foreground">香篆</Text>
           <View class="flex-1" />
           <View class="flex-row items-center gap-1.5">
-            <If when={packageReady() || appUpdate() !== null}>
-              <Text class="rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-foreground">更新</Text>
-            </If>
             <Dot tone={isRest() ? "rest" : isIdle() ? "idle" : "work"} />
             <Text class="text-[10px] text-muted-foreground">{phaseLabel()}</Text>
           </View>
@@ -385,7 +380,7 @@ export function MainWindow() {
             </View>
           </If>
 
-          <If when={tab() === "rules"}>
+          <If when={tab() === "settings"}>
             <View style={{ ...body.style, gap: 10 }}>
               <Card style={{ padding: 0 }}>
                 <View class="gap-2 px-4 py-3">
@@ -400,45 +395,22 @@ export function MainWindow() {
                   </If>
                   <View class="flex-row items-center justify-between gap-3">
                     <Text class="text-[10px] leading-4 text-muted-foreground">
-                      {packageReady()
-                        ? "新版本已下载，重启后生效"
-                        : appUpdate()
-                          ? `发现新版本 v${appUpdate()!.version}`
+                      {applying()
+                        ? "正在重启进入新版本…"
+                        : progress() !== null
+                          ? `正在下载 v${pendingVersion() ?? ""} · ${Math.round((progress() ?? 0) * 100)}%`
                           : checking()
                             ? "正在检查更新…"
                             : (updateError() ?? (shell.packages ? "已是最新" : "开发模式不检查更新"))}
                     </Text>
-                    <If when={packageReady()}>
-                      <Button
-                        onPress={() => void restartIntoPackage()}
-                        class="rounded-[7px] bg-primary px-2.5 py-1 transition duration-150 active:scale-95"
-                      >
-                        <Text class="text-[11px] text-primary-foreground">重启更新</Text>
-                      </Button>
-                    </If>
-                    <If when={!packageReady() && appUpdate() !== null}>
-                      <Button
-                        onPress={() => void installAppUpdate()}
-                        class="rounded-[7px] bg-primary px-2.5 py-1 transition duration-150 active:scale-95"
-                      >
-                        <Text class="text-[11px] text-primary-foreground">下载并安装</Text>
-                      </Button>
-                    </If>
-                    <If when={!packageReady() && appUpdate() === null}>
-                      <Button
-                        disabled={checking()}
-                        onPress={() => void checkForUpdates()}
-                        class="rounded-[7px] px-2.5 py-1 transition duration-150 hover:bg-accent active:scale-95 disabled:opacity-40"
-                      >
-                        <Text class="text-[11px] text-muted-foreground">检查更新</Text>
-                      </Button>
-                    </If>
+                    <Button
+                      disabled={checking() || applying()}
+                      onPress={() => void checkForUpdates()}
+                      class="rounded-[7px] px-2.5 py-1 transition duration-150 hover:bg-accent active:scale-95 disabled:opacity-40"
+                    >
+                      <Text class="text-[11px] text-muted-foreground">检查更新</Text>
+                    </Button>
                   </View>
-                  <If when={progress() !== null}>
-                    <Text class="text-[10px] text-muted-foreground">
-                      下载中 {Math.round((progress() ?? 0) * 100)}%
-                    </Text>
-                  </If>
                 </View>
               </Card>
 

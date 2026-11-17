@@ -183,8 +183,8 @@ export function Shell() {
   effect(() => {
     if (!settingsLoaded()) return;
     if (!shellInfo().packages) return;
-    const first = setTimeout(() => void checkForUpdates({ quiet: true }), 3000);
-    const every = setInterval(() => void checkForUpdates({ quiet: true }), 6 * 60 * 60_000);
+    const first = setTimeout(() => void checkForUpdates(), 3000);
+    const every = setInterval(() => void checkForUpdates(), 6 * 60 * 60_000);
     cleanup(() => {
       clearTimeout(first);
       clearInterval(every);

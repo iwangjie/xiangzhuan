@@ -51,8 +51,7 @@
     "windows": true,
     "webview": {
       "hosts": []
-    },
-    "openUrl": true
+    }
   },
   "updater": {
     "github": "iwangjie/xiangzhuan",
