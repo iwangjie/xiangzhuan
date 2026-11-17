@@ -5,7 +5,7 @@ import { Shell } from "./src/Shell";
 
 function App() {
   return (
-    <View class="flex-1 bg-background">
+    <View style={{ flex: 1, backgroundColor: "transparent" }}>
       <MainWindow />
       <RestWindows />
       <Shell />
