@@ -97,6 +97,15 @@ open -g /Applications/香篆.app
 4. **只往前 seek**：`#tea-wash` 的 opacity 是 JS 直接写的，往回跳不会复位，会误判成「黑屏 bug」。
 5. 预览文件不要提交（`test/*-preview.html` 已在 `.gitignore`）。
 
+## 发布与 OTA 契约
+
+- `nsh.json` 的 `updater` 指向 `iwangjie/xiangzhuan`；`publicKey`（签 manifest）与 `packages.roots`（认证 release 密钥）都只放公钥。私钥在仓库外 `~/xiangzhuan-keys/`，`root.secret` 不联网、不进 CI。
+- CI secrets：`NSH_RELEASE_KEY`、`NSH_RELEASE_CERT`、`NSH_UPDATE_KEY`。证书由 root 签发给 release 密钥，覆盖 `com.iwangjie.xiangzhuan`，365 天有效，到期前用 `nsh certify` 重签。
+- `.github/workflows/release.yml` 用 `macos-15`（arm64）与 `macos-15-intel`（x86_64）两个 runner。本地 nsh 只有本机架构的 runner，交叉打包会报错，不要改回单 job。
+- 归档必须在 `install-dock-hide.sh` 之后重新 `tar`：`nsh package` 在注入 dylib 前就写好了它自己的 archive。
+- 每次发版 `version` 与 `build` 一起涨；OTA 包的 build 必须高于已安装外壳的 build。`nsh publish --min-runtime 0.5.0` 固定最低运行时，避免新 CLI 抬高门槛后老外壳拒收。
+- 已推送的 tag 不要重打；`gh release delete --cleanup-tag=false` 只重发资产，tag 不变。
+
 ## 仓库习惯
 
 - 提交信息用中文，`fix(rest):` / `feat:` + 一句话，正文写清根因。

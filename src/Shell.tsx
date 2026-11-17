@@ -3,6 +3,7 @@ import { Menu, Tray, Window, type MenuItem } from "nsh/desktop";
 import trayIcon from "../assets/tray.svg";
 import { readInputActivity } from "./input-activity";
 import { ensureLoginItem, setLoginItem } from "./login-item";
+import { rememberTrayBounds } from "./popover";
 import {
   canPostponeNow,
   canSkipNow,
@@ -161,7 +162,12 @@ export function Shell() {
     Tray.set({
       icon: trayIcon,
       tooltip: trayLine(),
-      onClick: showApp,
+      onClick: (event) => {
+        rememberTrayBounds(event.bounds);
+        const win = Window.get("main");
+        if (win?.state()?.visible) win.hide();
+        else showApp();
+      },
       menu: trayMenu(),
     });
   });

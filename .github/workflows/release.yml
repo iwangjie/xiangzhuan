@@ -8,8 +8,20 @@ permissions:
   contents: write
 
 jobs:
-  release:
-    runs-on: macos-15
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - arch: arm64
+            runner: macos-15
+            suffix: aarch64
+            label: arm64
+          - arch: x86_64
+            runner: macos-15-intel
+            suffix: x86_64
+            label: x64
+    runs-on: ${{ matrix.runner }}
     steps:
       - uses: actions/checkout@v4
       - name: Install nsh
@@ -17,20 +29,73 @@ jobs:
           curl -fsSL https://nsh.dev/install.sh | sh -s -- --nightly
           echo "$HOME/.nsh/bin" >> "$GITHUB_PATH"
       - name: Package
-        run: nsh package App.tsx --target macos
-      - name: Install native helpers
-        run: sh scripts/install-dock-hide.sh .nsh/out/香篆.app
-      - name: Make DMG
         run: |
-          # An ASCII asset name: GitHub drops non-ASCII characters, which
-          # turned "香篆-macos.dmg" into "-macos.dmg" on the release page.
-          version="${GITHUB_REF_NAME#v}"
-          dmg=".nsh/out/xiangzhuan-${version}-macos-arm64.dmg"
-          mkdir -p .nsh/out/dmg
-          cp -R .nsh/out/香篆.app .nsh/out/dmg/
-          ln -s /Applications .nsh/out/dmg/Applications
-          hdiutil create -volname "香篆" -srcfolder .nsh/out/dmg -ov -format UDZO "$dmg"
-          echo "DMG=$dmg" >> "$GITHUB_ENV"
+          out="$RUNNER_TEMP/app"
+          nsh package App.tsx --target macos --arch ${{ matrix.arch }} -o "$out"
+          sh scripts/install-dock-hide.sh "$out/香篆.app"
+          version=$(jq -r .version nsh.json)
+          mkdir -p dist
+          # The updater's archive: ASCII name in the <name>-<version>-<os>-<arch>
+          # form `nsh update-manifest` reads, and the injected dylib travels
+          # inside it (nsh package wrote its own archive before the injection).
+          tar -czf "dist/xiangzhuan-${version}-macos-${{ matrix.suffix }}.tar.gz" -C "$out" "香篆.app"
+          dmg="$RUNNER_TEMP/dmg"
+          mkdir -p "$dmg"
+          cp -R "$out/香篆.app" "$dmg/"
+          ln -s /Applications "$dmg/Applications"
+          hdiutil create -volname "香篆" -srcfolder "$dmg" -ov -format UDZO \
+            "dist/xiangzhuan-${version}-macos-${{ matrix.label }}.dmg"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xiangzhuan-${{ matrix.arch }}
+          path: dist/*
+          if-no-files-found: error
+
+  release:
+    needs: build
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nsh
+        run: |
+          curl -fsSL https://nsh.dev/install.sh | sh -s -- --nightly
+          echo "$HOME/.nsh/bin" >> "$GITHUB_PATH"
+      - name: Collect artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Write the keys
+        env:
+          RELEASE_KEY: ${{ secrets.NSH_RELEASE_KEY }}
+          RELEASE_CERT: ${{ secrets.NSH_RELEASE_CERT }}
+          UPDATE_KEY: ${{ secrets.NSH_UPDATE_KEY }}
+        run: |
+          mkdir -p "$RUNNER_TEMP/keys"
+          printf '%s\n' "$RELEASE_KEY" > "$RUNNER_TEMP/keys/release.secret"
+          printf '%s\n' "$RELEASE_CERT" > "$RUNNER_TEMP/keys/release.cert"
+          printf '%s\n' "$UPDATE_KEY" > "$RUNNER_TEMP/keys/update.secret"
+          jq -r '.updater.packages.roots[0]' nsh.json > "$RUNNER_TEMP/keys/root.pub"
+      - name: Publish the OTA package and the manifest
+        run: |
+          build=$(jq -r .build nsh.json)
+          package="dist/com.iwangjie.xiangzhuan-${build}.nshpkg"
+          # The apps in the field were built with runtime 0.5.0; publishing
+          # with a newer CLI must not lift that floor.
+          nsh publish \
+            --key "$RUNNER_TEMP/keys/release.secret" \
+            --cert "$RUNNER_TEMP/keys/release.cert" \
+            --min-runtime 0.5.0 \
+            -o "$package"
+          nsh verify "$package" --root "$RUNNER_TEMP/keys/root.pub"
+          git log -1 --format=%B > NOTES.md
+          nsh update-manifest dist/*.tar.gz \
+            --package "$package" \
+            --notes NOTES.md \
+            --key "$RUNNER_TEMP/keys/update.secret" \
+            -o dist
+          test "$(jq -r '.platforms | keys | sort | join(",")' dist/latest.json)" = "macos-aarch64,macos-x86_64"
+          test -n "$(jq -r '.package.build' dist/latest.json)"
       - name: Publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -38,4 +103,6 @@ jobs:
           # Replace the release so a re-tagged build never leaves the previous
           # asset alongside the new one.
           gh release delete "$GITHUB_REF_NAME" --yes --cleanup-tag=false || true
-          gh release create "$GITHUB_REF_NAME" "$DMG" --title "$GITHUB_REF_NAME" --generate-notes
+          gh release create "$GITHUB_REF_NAME" dist/* \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file NOTES.md

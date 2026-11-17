@@ -1,5 +1,6 @@
 import { batch, computed, signal, Storage } from "nsh";
 import { displays, Window } from "nsh/desktop";
+import { placeMainWindow } from "./popover";
 
 export type Phase = "idle" | "focus" | "rest" | "postpone";
 
@@ -502,6 +503,7 @@ export function showApp(): void {
     return;
   }
   tick();
+  placeMainWindow();
   const main = Window.get("main");
   main?.show();
   main?.focus();
