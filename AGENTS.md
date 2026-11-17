@@ -105,6 +105,7 @@ open -g /Applications/香篆.app
 - 归档必须在 `install-dock-hide.sh` 之后重新 `tar`：`nsh package` 在注入 dylib 前就写好了它自己的 archive。
 - 每次发版 `version` 与 `build` 一起涨；OTA 包的 build 必须高于已安装外壳的 build。`nsh publish --min-runtime 0.5.0` 固定最低运行时，避免新 CLI 抬高门槛后老外壳拒收。
 - 已推送的 tag 不要重打；`gh release delete --cleanup-tag=false` 只重发资产，tag 不变。
+- 仓库变量 `MIRROR_PREFIX` 可把归档与 nshpkg 的 URL 指到 GitHub 镜像（如 `https://gh-proxy.com/https://github.com/iwangjie/xiangzhuan/releases/download`）；留空即回 GitHub。manifest 本身仍从 GitHub 取，nsh 只有一个更新源，没有运行时回退。
 
 ## 仓库习惯
 

@@ -77,6 +77,12 @@ jobs:
           printf '%s\n' "$UPDATE_KEY" > "$RUNNER_TEMP/keys/update.secret"
           jq -r '.updater.packages.roots[0]' nsh.json > "$RUNNER_TEMP/keys/root.pub"
       - name: Publish the OTA package and the manifest
+        env:
+          # A GitHub mirror that serves release assets, without the trailing
+          # tag (`https://gh-proxy.com/https://github.com/o/r/releases/download`).
+          # The manifest still comes from GitHub; only the archives and the
+          # package download through it.
+          MIRROR_PREFIX: ${{ vars.MIRROR_PREFIX }}
         run: |
           build=$(jq -r .build nsh.json)
           package="dist/com.iwangjie.xiangzhuan-${build}.nshpkg"
@@ -89,13 +95,22 @@ jobs:
             -o "$package"
           nsh verify "$package" --root "$RUNNER_TEMP/keys/root.pub"
           git log -1 --format=%B > NOTES.md
+          base=()
+          if [ -n "$MIRROR_PREFIX" ]; then
+            base=(--base-url "$MIRROR_PREFIX/$GITHUB_REF_NAME")
+          fi
           nsh update-manifest dist/*.tar.gz \
             --package "$package" \
             --notes NOTES.md \
+            "${base[@]}" \
             --key "$RUNNER_TEMP/keys/update.secret" \
             -o dist
           test "$(jq -r '.platforms | keys | sort | join(",")' dist/latest.json)" = "macos-aarch64,macos-x86_64"
           test -n "$(jq -r '.package.build' dist/latest.json)"
+          if [ -n "$MIRROR_PREFIX" ]; then
+            jq -e --arg p "$MIRROR_PREFIX/$GITHUB_REF_NAME/" \
+              '([.platforms[].url, .package.url] | map(startswith($p)) | all)' dist/latest.json
+          fi
       - name: Publish
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
