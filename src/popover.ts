@@ -1,5 +1,5 @@
 import { displays, Window, type Display } from "nsh/desktop";
-import type { Bounds } from "nsh";
+import { platform, type Bounds } from "nsh";
 
 /** The menu bar icon's frame from the last primary click on it. */
 let trayBounds: Bounds | null = null;
@@ -25,8 +25,7 @@ function displayFor(bounds: Bounds | null): Display | undefined {
   return all.find((display) => display.primary) ?? all[0];
 }
 
-/** Places the main window under the menu bar icon, right edges aligned,
- * clamped to the display's usable area. */
+/** Places the main window by the tray icon, within the display's usable area. */
 export function placeMainWindow(): void {
   const win = Window.get("main");
   if (!win) return;
@@ -39,10 +38,13 @@ export function placeMainWindow(): void {
   const margin = 8;
   const gap = 6;
   let x = usable.origin.x + usable.size.width - size.width - margin;
-  let y = usable.origin.y + gap;
+  const bottom = usable.origin.y + usable.size.height;
+  let y = platform.os === "windows" ? bottom - size.height - gap : usable.origin.y + gap;
   if (anchor) {
     x = anchor.origin.x + anchor.size.width - size.width;
-    y = anchor.origin.y + anchor.size.height + gap;
+    y = platform.os === "windows" && anchor.origin.y >= usable.origin.y + usable.size.height / 2
+      ? anchor.origin.y - size.height - gap
+      : anchor.origin.y + anchor.size.height + gap;
   }
   x = Math.min(Math.max(x, usable.origin.x + margin), usable.origin.x + usable.size.width - size.width - margin);
   y = Math.min(Math.max(y, usable.origin.y + gap), usable.origin.y + usable.size.height - size.height - margin);

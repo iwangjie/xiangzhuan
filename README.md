@@ -1,15 +1,15 @@
 # 香篆
 
-驻在 macOS 菜单栏的专注与休息提醒。工作到点，全屏燃香；一炷香尽，回到案前。
+驻在 macOS 菜单栏和 Windows 系统托盘的专注与休息提醒。工作到点，全屏燃香；一炷香尽，回到案前。
 
-用 [nsh](https://nsh.dev) 写成：AppKit 原生视图、TSX 界面，休息屏是一块内联的 three.js 场景（WebView）。没有网络请求，没有账号，不收集数据。
+用 [nsh](https://nsh.dev) 写成：两端共用 TSX 界面和 WebView 中的离线 three.js 休息场景。应用通过 GitHub 检查更新，无需账号，也不收集数据。
 
 - bundle id：`com.iwangjie.xiangzhuan`
-- 系统：macOS 14+
+- 系统：macOS 14+，Windows 10 1809+ 或 Windows 11（Windows 需要 x64 和 WebView2 Runtime）
 
 ## 现在是什么样
 
-**菜单栏是家。** 启动即以 Accessory 方式驻留菜单栏，不占 Dock（可在设置里切回），并立刻开始一轮专注。关闭主窗口只是收起。
+**启动即专注。** macOS 驻留菜单栏，默认隐藏 Dock 图标。Windows 驻留系统托盘。两端都在启动时开始专注，关闭主窗口时收起界面。
 
 **一炷香。** 主界面显示这一轮还剩多久、今天专注了多久、香烧到哪里。专注 25/45/60 分钟可选，中途改时长按剩余比例重算，不打断当前的节奏。
 
@@ -17,9 +17,11 @@
 
 **空闲自动暂停。** 专注期间，键鼠连续 5 分钟没有操作就暂停计时。回来操作时继续剩余时间；若整段空闲已达到设置的专注时长，就从完整的一轮重新开始。
 
-**到点休息。** 每块显示器各开一块无边框全屏休息屏，盖住菜单栏与 Dock，跟随所有 Space，同进同出。默认开启「休息时锁定输入」：休息期间键盘、鼠标与切屏被拦截，休息屏始终在最前，等香燃尽后自动回到休息前的 App；在设置里关掉即可恢复「可跳过 / 可延后」的软休息。
+**到点休息。** 每块显示器各开一块无边框全屏休息屏。macOS 的休息屏覆盖菜单栏和 Dock，跟随所有 Space。默认开启「休息时锁定输入」，休息期间拦截键鼠与切屏，香燃尽后回到休息前的 App。
 
-**休息结束不弹主界面。** 香燃尽、跳过或延后后，主窗口保持收起；需要时点菜单栏里的「显示香篆」。休息前正在用的 App 会自动回到前台。
+Windows 的「锁定休息」会将休息屏置顶，并关闭跳过、延后和场景交互。系统切换键由 Windows 处理。两端都可以在设置里解除锁定。
+
+**休息结束不弹主界面。** 香燃尽、跳过或延后后，主窗口保持收起。需要时可从菜单栏或系统托盘打开香篆。
 
 **休息屏里的一间静室。** three.js 画一间室内茶席：茶、香、书画。开场停整屋 3 秒，再用 3 秒推近到香头；可切「茶席 / 香篆 / 书画」三个视角，拖动可环视。锁定休息时这些交互控件会收起。大肥鱼有时会来茶室，跑进来或先在画面边缘探头，随机喝茶、看画或在角落张望，做完再沿路离开。角色素材来源见 [大肥鱼素材署名](assets/fish/NOTICE.md)。
 
@@ -58,6 +60,14 @@ nsh package App.tsx --target macos
 sh scripts/install-dock-hide.sh .nsh/out/香篆.app
 ```
 
+在 Windows x64 上，使用 nsh v0.6.1、Rust（MSVC 工具链，含 C++ Build Tools 和 Windows SDK）、LLVM 和 Inno Setup 6 打包。确保 `nsh` 和 Inno Setup 的 `ISCC.exe` 在 `PATH` 上，并将 `LIBCLANG_PATH` 指到 LLVM 的 `bin`。用 PowerShell 7 执行打包命令。
+
+```powershell
+./scripts/package-windows.ps1
+```
+
+安装包和便携 ZIP 输出到 `.nsh/out/windows`。
+
 第二行把 `native/dock_hide.m` 编译成 dylib 注入 App：它通过文件事件监听 `storage.json` 变化，实时切换「只在菜单栏」与「显示在 Dock」，并在休息期间把休息窗抬到最前、安装事件监视器拦截键盘鼠标与切屏；休息结束后卸载事件监视、恢复窗口层级并回到休息前的 App。**每次重新打包都要再跑一次**，否则安装的是一个没有签名过的、Dock 图标永远显示、也没有休息锁的版本。
 
 装进 `/Applications`：
@@ -84,14 +94,15 @@ hdiutil create -volname "香篆" -srcfolder /tmp/xiangzhuan-dmg -ov -format UDZO
 
 ## 发布与更新
 
-推送 `v*` tag 触发 `.github/workflows/release.yml`，两个 runner 各打一份：
+推送 `v*` tag 会触发 `.github/workflows/release.yml`。
 
 | runner | 架构 | 归档 |
 |---|---|---|
 | `macos-15` | arm64 | `xiangzhuan-<version>-macos-aarch64.tar.gz` |
 | `macos-15-intel` | x86_64 | `xiangzhuan-<version>-macos-x86_64.tar.gz` |
+| `windows-2025` | x86_64 | `xiangzhuan-<version>-windows-x86_64.zip` |
 
-归档前必须跑 `scripts/install-dock-hide.sh`，否则 OTA 下载到的新外壳会丢掉 Dock 隐藏与休息锁。release 资产是同名 DMG（`-arm64` / `-x64`）、`com.iwangjie.xiangzhuan-<build>.nshpkg`、`latest.json`、`latest.json.sig`。
+macOS 归档前必须跑 `scripts/install-dock-hide.sh`，否则 OTA 下载到的新外壳会丢掉 Dock 隐藏与休息锁。Release 同时提供 macOS DMG 和 Windows 安装包。壳更新的清单引用各平台归档，热更的清单引用 `com.iwangjie.xiangzhuan-<build>.nshpkg`。
 
 密钥在仓库外 `~/xiangzhuan-keys/`：`root.secret` 离线保管，`release.secret`、`release.cert`、`update.secret` 写进 GitHub secrets（`NSH_RELEASE_KEY`、`NSH_RELEASE_CERT`、`NSH_UPDATE_KEY`）。`nsh.json` 只放公钥：`updater.publicKey` 签 manifest，`updater.packages.roots` 认证签包的 release 密钥。
 

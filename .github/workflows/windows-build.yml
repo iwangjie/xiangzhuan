@@ -1,0 +1,28 @@
+name: Build Windows
+
+on:
+  workflow_call:
+
+jobs:
+  package:
+    runs-on: windows-2025
+    env:
+      # Match the nsh-core dependency of the Windows native module.
+      NSH_VERSION: v0.6.1
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install nsh
+        shell: pwsh
+        run: |
+          irm https://nsh.dev/install.ps1 | iex
+          "$env:LOCALAPPDATA\nsh\bin" >> $env:GITHUB_PATH
+          "${env:ProgramFiles(x86)}\Inno Setup 6" >> $env:GITHUB_PATH
+          "LIBCLANG_PATH=$env:ProgramFiles\LLVM\bin" >> $env:GITHUB_ENV
+      - name: Package Windows x64
+        shell: pwsh
+        run: ./scripts/package-windows.ps1 -OutputDirectory dist
+      - uses: actions/upload-artifact@v4
+        with:
+          name: xiangzhuan-windows-x64
+          path: dist/*
+          if-no-files-found: error

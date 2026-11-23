@@ -1,0 +1,8 @@
+[package]
+name = "xiangzhuan-windows"
+version = "0.1.0"
+edition = "2024"
+publish = false
+
+[dependencies]
+nsh-core = "=0.6.1"

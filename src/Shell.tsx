@@ -1,8 +1,8 @@
-import { cleanup, computed, effect, keymap, lifecycle, untracked } from "nsh";
-import { Menu, Tray, Window, type MenuItem } from "nsh/desktop";
+import { cleanup, computed, effect, keymap, lifecycle, platform, untracked } from "nsh";
+import { Application, Menu, Tray, Window, type MenuItem } from "nsh/desktop";
 import { shellInfo } from "nsh/updater";
 import trayIcon from "../assets/tray.svg";
-import { readInputActivity } from "./input-activity";
+import { openWindowsInputMonitor, readInputActivity } from "./input-activity";
 import { ensureLoginItem, setLoginItem } from "./login-item";
 import { rememberTrayBounds } from "./popover";
 import { checkForUpdates } from "./updates";
@@ -36,7 +36,6 @@ import {
   stopCycle,
   tick,
   togglePause,
-  updateSettings,
 } from "./state";
 
 const trayTime = computed(() => {
@@ -101,11 +100,7 @@ function trayMenu(): (MenuItem | false)[] {
     {
       label: "登录时启动",
       checked: settings().startAtLogin,
-      onSelect: () => {
-        const next = !settings().startAtLogin;
-        updateSettings({ startAtLogin: next });
-        void setLoginItem(next);
-      },
+      onSelect: () => void setLoginItem(!settings().startAtLogin),
     },
     { type: "separator" },
     { role: "quit", label: "退出香篆" },
@@ -159,6 +154,15 @@ function appMenu(): (MenuItem | false)[] {
 
 export function Shell() {
   loadSettings();
+
+  const windows = platform.os === "windows";
+  let readWindowsActivity: Awaited<ReturnType<typeof openWindowsInputMonitor>> | undefined;
+  if (windows) {
+    cleanup(Application.on("secondInstance", showApp));
+    void openWindowsInputMonitor().then((read) => {
+      readWindowsActivity = read;
+    }).catch((error) => console.warn("读取 Windows 空闲时间不可用", error));
+  }
 
   effect(() => {
     Tray.set({
@@ -239,6 +243,10 @@ export function Shell() {
   };
 
   const syncFocus = () => {
+    if (windows) {
+      tick(Date.now(), phase() === "focus" && !paused() ? readWindowsActivity?.() : undefined);
+      return;
+    }
     tick();
     checkActivity();
   };

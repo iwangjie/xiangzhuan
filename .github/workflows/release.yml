@@ -51,8 +51,11 @@ jobs:
           path: dist/*
           if-no-files-found: error
 
+  windows:
+    uses: ./.github/workflows/windows-build.yml
+
   release:
-    needs: build
+    needs: [build, windows]
     runs-on: macos-15
     steps:
       - uses: actions/checkout@v4
@@ -75,7 +78,8 @@ jobs:
             # Host-side code: the native dylib, its installer script and the
             # app icon cannot travel inside an .nshpkg.
             if git diff --name-only "$previous" "$GITHUB_REF_NAME" -- \
-                 native scripts/install-dock-hide.sh assets/icon.png | grep -q .; then
+                 native scripts/install-dock-hide.sh scripts/package-windows.ps1 \
+                 .github/workflows/windows-build.yml assets/icon.png | grep -q .; then
               shell=true
             fi
             # Any nsh.json change except the release counters changes the
@@ -132,13 +136,13 @@ jobs:
             # A shell release carries the app itself; a package in the same
             # manifest would make clients install code first and the shell
             # second, with two restarts.
-            nsh update-manifest dist/*.tar.gz \
+            nsh update-manifest dist/*.tar.gz dist/*-windows-x86_64.zip \
               --notes NOTES.md \
               "${base[@]}" \
               --key "$RUNNER_TEMP/keys/update.secret" \
               -o dist
             jq -e \
-              '(.platforms | keys | sort) == ["macos-aarch64","macos-x86_64"]
+              '(.platforms | keys | sort) == ["macos-aarch64","macos-x86_64","windows-x86_64"]
                and .package == null' dist/latest.json
             rm -f "$package"
           else

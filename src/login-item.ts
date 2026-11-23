@@ -2,7 +2,9 @@ import fs from "fs/promises";
 import os from "os";
 import { join } from "path";
 import process from "process";
-import { loginError, settings } from "./state";
+import { platform } from "nsh";
+import { Application } from "nsh/desktop";
+import { loginError, settings, updateSettings } from "./state";
 
 const LABEL = "com.iwangjie.xiangzhuan.login";
 const BUNDLE_ID = "com.iwangjie.xiangzhuan";
@@ -40,6 +42,13 @@ async function currentUid(): Promise<string> {
 
 export async function setLoginItem(on: boolean): Promise<boolean> {
   try {
+    if (platform.os === "windows") {
+      await Application.setLaunchAtLogin(on);
+      updateSettings({ startAtLogin: on });
+      loginError.set(null);
+      return true;
+    }
+    updateSettings({ startAtLogin: on });
     const path = plistPath();
     const uid = await currentUid();
     if (on) {
@@ -63,6 +72,14 @@ export async function setLoginItem(on: boolean): Promise<boolean> {
 /** Writes the login item once, after an installed app starts with it on. */
 export async function ensureLoginItem(): Promise<void> {
   if (process.env.NSH_APP_DIR) return;
+  if (platform.os === "windows") {
+    try {
+      updateSettings({ startAtLogin: await Application.launchAtLogin() });
+    } catch (error) {
+      loginError.set(error instanceof Error ? error.message : String(error));
+    }
+    return;
+  }
   if (!settings().startAtLogin) return;
   if (!(await fs.exists("/Applications/香篆.app"))) return;
   await setLoginItem(true);

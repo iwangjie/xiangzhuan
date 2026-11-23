@@ -1,4 +1,4 @@
-import { cleanup, computed, effect, signal, View, WebView, type WebViewRef } from "nsh";
+import { cleanup, computed, effect, platform, signal, View, WebView, type WebViewRef } from "nsh";
 import { displays, Window, type Display } from "nsh/desktop";
 import {
   canPostponeNow,
@@ -24,6 +24,11 @@ import {
 } from "./state";
 import { SHRINE_HTML } from "./shrine-html";
 
+const windows = platform.os === "windows";
+// With a base URL, nsh's WebView2 backend serves the HTML from memory.
+// This lets the scene exceed NavigateToString's 2 MB limit.
+const WINDOWS_SHRINE_URL = "https://shrine.xiangzhuan.invalid/";
+
 // The shrine page is expensive to build (procedural textures, shader compile),
 // so it is only mounted in the last few seconds before a rest. Before that the
 // native window exists alone, which costs nothing measurable.
@@ -45,7 +50,7 @@ function showRestWindow(win: NonNullable<ReturnType<typeof Window.get>>, display
     animated: false,
   });
   win.show();
-  win.focus();
+  if (!windows || display.primary) win.focus();
 }
 
 export function RestWindows() {
@@ -75,6 +80,7 @@ function RestWindow(props: { display: Display }) {
       }}
       title="香篆 · 休息"
       frame="none"
+      display={windows ? props.display.id : undefined}
       defaultPosition={{ x: -12000, y: -12000 }}
       defaultSize={{ width: 1, height: 1 }}
       level="aboveDock"
@@ -84,6 +90,7 @@ function RestWindow(props: { display: Display }) {
       minimizable={false}
       maximizable={false}
       closable={false}
+      closeOnPress={windows ? false : undefined}
       focusable={true}
       activate={true}
       closeOnEscape={false}
@@ -136,7 +143,7 @@ function RestScreen(props: { display: Display }) {
   };
 
   effect(() => {
-    if (restOpen() && loaded()) view?.focus();
+    if (restOpen() && loaded() && (!windows || props.display.primary)) view?.focus();
   });
 
   effect(() => {
@@ -149,11 +156,12 @@ function RestScreen(props: { display: Display }) {
         view = node;
       }}
       html={SHRINE_HTML}
+      baseUrl={windows ? WINDOWS_SHRINE_URL : undefined}
       style={{ flex: 1, opacity: loaded() ? 1 : 0 }}
       scrollable={false}
       onLoad={() => {
         loaded.set(true);
-        view?.focus();
+        if (!windows) view?.focus();
         post();
       }}
       onMessage={(event) => {

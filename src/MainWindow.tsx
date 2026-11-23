@@ -6,6 +6,7 @@ import {
   effect,
   keymap,
   lifecycle,
+  platform,
   reduceMotion,
   Scroll,
   signal,
@@ -62,6 +63,7 @@ import { Action, Card, Dot, KeyHint, Ring, Segmented } from "./ui";
 const WORK_OPTIONS = [25, 45, 60] as const;
 const REST_OPTIONS = [60, 90, 120] as const;
 const POSTPONE_OPTIONS = [5, 10, 15] as const;
+const windows = platform.os === "windows";
 
 const TABS = [
   { id: "timer", label: "计时" },
@@ -419,15 +421,15 @@ export function MainWindow() {
               <Card style={{ padding: 0 }}>
                 <View class="flex-row items-center justify-between gap-3 px-4 py-3">
                   <View style={{ flex: 1, gap: 2 }}>
-                    <Text class="text-[12px] font-medium text-foreground">休息时锁定输入</Text>
+                    <Text class="text-[12px] font-medium text-foreground">{windows ? "锁定休息" : "休息时锁定输入"}</Text>
                     <Text class="text-[10px] leading-4 text-muted-foreground">
-                      拦截键盘鼠标与切屏，只能等香燃尽
+                      {windows ? "休息屏置顶，禁用跳过和延后" : "拦截键盘鼠标与切屏，只能等香燃尽"}
                     </Text>
                   </View>
                   <Switch
                     checked={settings().lockRest}
                     onChange={({ checked }) => updateSettings({ lockRest: checked })}
-                    accessibilityLabel="休息时锁定输入"
+                    accessibilityLabel={windows ? "锁定休息" : "休息时锁定输入"}
                     trackClass="h-6 w-11 rounded-full bg-muted p-0.5 transition-colors checked:bg-primary"
                     thumbClass="size-5 rounded-full bg-background shadow-sm transition-transform checked:translate-x-5"
                   />
@@ -437,7 +439,7 @@ export function MainWindow() {
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text class="text-[12px] font-medium text-foreground">允许跳过休息</Text>
                     <Text class="text-[10px] leading-4 text-muted-foreground">
-                      {settings().lockRest ? "开启后会解除休息时的输入锁定" : "关闭后仍可延后休息"}
+                      {settings().lockRest ? "开启后会解除锁定休息" : "关闭后仍可延后休息"}
                     </Text>
                   </View>
                   <Switch
@@ -453,36 +455,35 @@ export function MainWindow() {
                   <View style={{ flex: 1, gap: 2 }}>
                     <Text class="text-[12px] font-medium text-foreground">登录时启动</Text>
                     <Text class="text-[10px] leading-4 text-muted-foreground">
-                      {loginError() ?? "登录后在菜单栏等你"}
+                      {loginError() ?? (windows ? "登录后驻留系统托盘" : "登录后在菜单栏等你")}
                     </Text>
                   </View>
                   <Switch
                     checked={settings().startAtLogin}
-                    onChange={({ checked }) => {
-                      updateSettings({ startAtLogin: checked });
-                      void setLoginItem(checked);
-                    }}
+                    onChange={({ checked }) => void setLoginItem(checked)}
                     accessibilityLabel="登录时启动"
                     trackClass="h-6 w-11 rounded-full bg-muted p-0.5 transition-colors checked:bg-primary"
                     thumbClass="size-5 rounded-full bg-background shadow-sm transition-transform checked:translate-x-5"
                   />
                 </View>
-                <View class="h-px bg-border/70" />
-                <View class="flex-row items-center justify-between gap-3 px-4 py-3">
-                  <View style={{ flex: 1, gap: 2 }}>
-                    <Text class="text-[12px] font-medium text-foreground">隐藏程序坞图标</Text>
-                    <Text class="text-[10px] leading-4 text-muted-foreground">
-                      只在菜单栏运行，不占 Dock
-                    </Text>
+                <If when={!windows}>
+                  <View class="h-px bg-border/70" />
+                  <View class="flex-row items-center justify-between gap-3 px-4 py-3">
+                    <View style={{ flex: 1, gap: 2 }}>
+                      <Text class="text-[12px] font-medium text-foreground">隐藏程序坞图标</Text>
+                      <Text class="text-[10px] leading-4 text-muted-foreground">
+                        只在菜单栏运行，不占 Dock
+                      </Text>
+                    </View>
+                    <Switch
+                      checked={settings().hideDockIcon}
+                      onChange={({ checked }) => updateSettings({ hideDockIcon: checked })}
+                      accessibilityLabel="隐藏程序坞图标"
+                      trackClass="h-6 w-11 rounded-full bg-muted p-0.5 transition-colors checked:bg-primary"
+                      thumbClass="size-5 rounded-full bg-background shadow-sm transition-transform checked:translate-x-5"
+                    />
                   </View>
-                  <Switch
-                    checked={settings().hideDockIcon}
-                    onChange={({ checked }) => updateSettings({ hideDockIcon: checked })}
-                    accessibilityLabel="隐藏程序坞图标"
-                    trackClass="h-6 w-11 rounded-full bg-muted p-0.5 transition-colors checked:bg-primary"
-                    thumbClass="size-5 rounded-full bg-background shadow-sm transition-transform checked:translate-x-5"
-                  />
-                </View>
+                </If>
               </Card>
 
               <Card style={{ padding: 0 }}>
