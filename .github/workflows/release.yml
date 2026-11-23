@@ -26,7 +26,7 @@ jobs:
       - uses: actions/checkout@v4
       - name: Install nsh
         run: |
-          curl -fsSL https://nsh.dev/install.sh | sh -s -- --nightly
+          curl -fsSL https://nsh.dev/install.sh | NSH_VERSION=v0.5.1 sh
           echo "$HOME/.nsh/bin" >> "$GITHUB_PATH"
       - name: Package
         run: |
@@ -65,7 +65,7 @@ jobs:
           fetch-depth: 0
       - name: Install nsh
         run: |
-          curl -fsSL https://nsh.dev/install.sh | sh -s -- --nightly
+          curl -fsSL https://nsh.dev/install.sh | NSH_VERSION=v0.5.1 sh
           echo "$HOME/.nsh/bin" >> "$GITHUB_PATH"
       - name: Choose the update channel
         id: channel
@@ -127,7 +127,7 @@ jobs:
             --min-runtime 0.5.0 \
             -o "$package"
           nsh verify "$package" --root "$RUNNER_TEMP/keys/root.pub"
-          git log -1 --format=%B > NOTES.md
+          git for-each-ref --format='%(contents)' "refs/tags/$GITHUB_REF_NAME" > NOTES.md
           base=()
           if [ -n "$MIRROR_PREFIX" ]; then
             base=(--base-url "$MIRROR_PREFIX/$GITHUB_REF_NAME")
