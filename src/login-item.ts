@@ -9,6 +9,12 @@ import { loginError, settings, updateSettings } from "./state";
 const LABEL = "com.iwangjie.xiangzhuan.login";
 const BUNDLE_ID = "com.iwangjie.xiangzhuan";
 
+// The Windows runner provides these APIs. macOS still builds against nsh 0.5.1.
+const windowsLogin = Application as typeof Application & {
+  launchAtLogin(): Promise<boolean>;
+  setLaunchAtLogin(enabled: boolean): Promise<void>;
+};
+
 const PLIST = `<?xml version="1.0" encoding="UTF-8"?>
 <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
 <plist version="1.0">
@@ -43,7 +49,7 @@ async function currentUid(): Promise<string> {
 export async function setLoginItem(on: boolean): Promise<boolean> {
   try {
     if (platform.os === "windows") {
-      await Application.setLaunchAtLogin(on);
+      await windowsLogin.setLaunchAtLogin(on);
       updateSettings({ startAtLogin: on });
       loginError.set(null);
       return true;
@@ -74,7 +80,7 @@ export async function ensureLoginItem(): Promise<void> {
   if (process.env.NSH_APP_DIR) return;
   if (platform.os === "windows") {
     try {
-      updateSettings({ startAtLogin: await Application.launchAtLogin() });
+      updateSettings({ startAtLogin: await windowsLogin.launchAtLogin() });
     } catch (error) {
       loginError.set(error instanceof Error ? error.message : String(error));
     }
