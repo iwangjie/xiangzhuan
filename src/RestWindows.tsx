@@ -1,6 +1,7 @@
 import { cleanup, computed, effect, platform, signal, View, WebView, type WebViewRef } from "nsh";
 import { displays, Window, type Display } from "nsh/desktop";
 import {
+  activeRestScene,
   canPostponeNow,
   canSkipNow,
   finishOutro,
@@ -22,6 +23,7 @@ import {
   settings,
   skipRest,
 } from "./state";
+import { CAUSTIC_HTML } from "./caustic-html";
 import { SHRINE_HTML } from "./shrine-html";
 
 const windows = platform.os === "windows";
@@ -29,8 +31,8 @@ const windows = platform.os === "windows";
 // This lets the scene exceed NavigateToString's 2 MB limit.
 const WINDOWS_SHRINE_URL = "https://shrine.xiangzhuan.invalid/";
 
-// The shrine page is expensive to build (procedural textures, shader compile),
-// so it is only mounted in the last few seconds before a rest. Before that the
+// The rest pages are expensive to build (procedural textures, shader compile),
+// so one is only mounted in the last few seconds before a rest. Before that the
 // native window exists alone, which costs nothing measurable.
 const PREWARM_MS = 5000;
 const needsRestPage = computed(() => {
@@ -99,7 +101,7 @@ function RestWindow(props: { display: Display }) {
       taskbar={false}
       backdrop="none"
     >
-      <View style={{ flex: 1, backgroundColor: "#070504" }}>
+      <View style={{ flex: 1, backgroundColor: activeRestScene() === "caustic" ? "#d8d2c8" : "#070504" }}>
         <If when={needsRestPage()}>
           <RestScreen display={props.display} />
         </If>
@@ -108,9 +110,11 @@ function RestWindow(props: { display: Display }) {
   );
 }
 
-/** The rest screen is the shrine page; the page draws its own controls and
- * reports them back through `window.nsh.postMessage`. */
+/** The rest screen is one of the scene pages; the page draws its own controls
+ * and reports them back through `window.nsh.postMessage`. */
 function RestScreen(props: { display: Display }) {
+  // The page is chosen at the start of the round: it holds for the whole rest.
+  const scene = activeRestScene();
   let view: WebViewRef | null = null;
   const loaded = signal(false);
   cleanup(() => {
@@ -136,7 +140,7 @@ function RestScreen(props: { display: Display }) {
         outro: restFinishing(),
         active: phase() === "rest",
         visitSeed: restEnd(),
-        label: phaseLine(),
+        label: scene === "caustic" && (restForced() || restInputLocked()) ? "光在墙上缓缓移动。" : phaseLine(),
         display: props.display.name,
       }),
     );
@@ -155,7 +159,7 @@ function RestScreen(props: { display: Display }) {
       ref={(node) => {
         view = node;
       }}
-      html={SHRINE_HTML}
+      html={scene === "caustic" ? CAUSTIC_HTML : SHRINE_HTML}
       baseUrl={windows ? WINDOWS_SHRINE_URL : undefined}
       style={{ flex: 1, opacity: loaded() ? 1 : 0 }}
       scrollable={false}

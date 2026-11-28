@@ -1,5 +1,6 @@
 import { expect, test } from "nsh/test";
 import {
+  activeRestScene,
   DEFAULT_SETTINGS,
   canPostponeNow,
   canSkipNow,
@@ -20,6 +21,7 @@ import {
   restFinishing,
   restInputLocked,
   restOpen,
+  restSceneDrawn,
   resumeFocus,
   setAllowSkip,
   setWorkMinutes,
@@ -43,8 +45,28 @@ function reset(): void {
   forceNext.set(false);
   postpones.set(0);
   settings.set({ ...DEFAULT_SETTINGS, lockRest: false });
+  restSceneDrawn.set(null);
   stats.set({ date: today(), focusMinutes: 0, rests: 0, skips: 0 });
 }
+
+test("the rest scene resolves the random default from its draw", () => {
+  reset();
+  expect(settings().restScene).toBe("random");
+  restSceneDrawn.set("caustic");
+  expect(activeRestScene()).toBe("caustic");
+  restSceneDrawn.set(null);
+  expect(activeRestScene()).toBe("shrine");
+});
+
+test("an explicit scene ignores the random draw", () => {
+  reset();
+  settings.update((s) => ({ ...s, restScene: "caustic" }));
+  restSceneDrawn.set(null);
+  expect(activeRestScene()).toBe("caustic");
+  settings.update((s) => ({ ...s, restScene: "shrine" }));
+  restSceneDrawn.set("caustic");
+  expect(activeRestScene()).toBe("shrine");
+});
 
 function restFromFocus(): void {
   startFocus();

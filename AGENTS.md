@@ -12,7 +12,7 @@ macOS 菜单栏的专注 / 休息提醒。用 nsh（AppKit 原生视图 + TSX）
 
 ## 四条硬规则
 
-1. **`src/shrine-html.ts` 是生成物，永远不手改。** 改 `test/rest-shrine.html` 或它引用的素材，然后 `python3 scripts/embed-shrine.py`。脚本会把 Three.js 和离线 3D 数据内联进页面并转义 `</script`。
+1. **`src/shrine-html.ts` 与 `src/caustic-html.ts` 是生成物，永远不手改。** 改 `test/rest-shrine.html` 或 `test/rest-caustic.html`，然后跑对应的 embed 脚本。shrine 脚本会把 Three.js 和离线 3D 数据内联进页面并转义 `</script`；caustic 页没有外部素材。
 2. **`storage.json` 的两个 key 是冻结的**（`src/state.ts` 顶部的 `SETTINGS_KEY` / `STATS_KEY`，故意是不可读字符串）。改 key = 老用户的设置和当日统计清零。
 3. **`hideDockIcon` 有一条跨语言契约**：`saveSettings()` 往 storage 里另写一个裸 key `hideDockIcon`（`"1"` 隐藏 / `"0"` 显示），`native/dock_hide.m` 通过 kqueue vnode 监听 `storage.json` 变化来切 `NSApplication` 的 activation policy（仅在休息期间启用 0.15s 窗口锁定轮询）。缺省视为隐藏。改任一侧都要同时改另一侧。
 4. **休息锁也有一条跨语言契约**：`startRest / closeRestWindows` 通过 `publishRestBridge()` 写裸 key `restActive` / `restLock`（`"1"` / `"0"`）。`restLock` 为 1 时，`native/dock_hide.m` 把休息窗抬到 `NSScreenSaverWindowLevel`、禁用切屏、用本地事件监视器吞掉键盘和鼠标；`restActive` 归 0 时恢复原窗口层级与 activation 选项，并激活休息前最前面的那个 App。`settings.lockRest` 默认 true，存在设置 blob 里，不要和这两个瞬态 key 混用。
@@ -24,7 +24,8 @@ nsh check                                  # 类型检查（必须干净）
 nsh test                                   # 状态与壳层测试
 nsh package App.tsx --target macos         # 打包到 .nsh/out/香篆.app
 sh scripts/install-dock-hide.sh .nsh/out/香篆.app   # 注入 Dock 隐藏 + 休息锁 dylib（每次打包后都要跑）
-python3 scripts/embed-shrine.py            # 场景改动后重新生成 shrine-html.ts
+python3 scripts/embed-shrine.py            # 香篆场景改动后重新生成 shrine-html.ts
+python3 scripts/embed-caustic.py           # 光影场景改动后重新生成 caustic-html.ts
 ```
 
 `nsh run` 会挂在 pty 里，别用它验证；验收用「打包 → 装到 `/Applications` → `open -g`」。
@@ -53,11 +54,13 @@ open -g /Applications/香篆.app
 
 ## 休息页契约（宿主 ↔ 场景）
 
+`RestScreen` 按 `activeRestScene()` 在挂载时选一页，挂上后不再换；两页共用同一套消息。`view:<name>` 只有香篆页用。`settings.restScene` 缺省为 `"random"`：每轮 `startRest` 时抛一枚铜钱（50% 光影），画进 `restSceneDrawn`；显式选了「香篆」或「光影」则永远用选中的那页。背景色与锁定态文案按画出的页切换。
+
 `src/RestWindows.tsx` 在状态变化及休息倒计时每秒推进时向页面 `postMessage` 一条 JSON：
 
 ```json
 { "type": "state", "remainingMs": 0, "totalMs": 90000, "progress": 0.4,
-  "canPostpone": true, "canSkip": true, "forced": false, "locked": false,
+  "canPostpone": true, "postponeMinutes": 5, "canSkip": true, "forced": false, "locked": false,
   "actionConfirmation": null,
   "outro": false, "active": true, "visitSeed": 1794362490000, "label": "把眼睛从屏幕上移开。",
   "display": "Built-in Retina Display" }
@@ -85,6 +88,15 @@ open -g /Applications/香篆.app
 - 低端机分支 `lowEnd` 控制 pixelRatio、阴影贴图和粒子数，新增粒子/贴图请一并接进去。
 
 **页面里已有的时钟与状态**：`outroElapsed`（收尾时间轴）、`burnTarget/burnCurrent`（香长）、`dipApproach`（俯身）、`dusk`（退光）。时间轴：`0–1.6` 移到茶席并提壶，`1.8–3.58` 出汤，`3.3–4.35` 回壶转杯，`4.6–5.9` 俯身，`5.35–6.55` 退光，`7.05` 发 `done`。
+
+## 光影休息页（`test/rest-caustic.html`）
+
+无外部素材的单文件 WebGL2 页面，改完跑 `embed-caustic.py`。宿主消息契约与香篆页相同。
+
+- 画面分两段：先追踪水晶体折射得到焦散图，再把墙面与地面的实心材质当接收面采样。`adapt` 在 `frameAvg > 26ms` 时按 0.85 倍降分辨率（下限 0.55），不要删 —— 全屏 5K 靠它兜底。
+- 确认框是手写的 `#confirm` + `#veil`（fixed + z-index），不是 `<dialog>`：headless WebKit 的整页截图截不到 canvas 之上的 top layer，改回去就没法在浏览器预览里核对。
+- 遮罩不要加 `backdrop-filter`：预览截图里它会把对话框所在的合成层一起吞掉，同样没法验收。
+- 水晶体只在未锁定的软休息里可拖动（`state.locked` 时页面不响应 pointer）。
 
 ## 怎么验证场景
 

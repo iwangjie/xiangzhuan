@@ -47,6 +47,7 @@ import {
   stats,
   stopCycle,
   updateSettings,
+  type RestScene,
 } from "./state";
 import { setLoginItem } from "./login-item";
 import {
@@ -64,6 +65,11 @@ const WORK_OPTIONS = [25, 45, 60] as const;
 const REST_OPTIONS = [60, 90, 120] as const;
 const POSTPONE_OPTIONS = [5, 10, 15] as const;
 const windows = platform.os === "windows";
+const SCENE_OPTIONS: readonly { value: RestScene; label: string }[] = [
+  { value: "shrine", label: "香篆" },
+  { value: "caustic", label: "光影" },
+  { value: "random", label: "随机" },
+];
 
 const TABS = [
   { id: "timer", label: "计时" },
@@ -415,6 +421,36 @@ export function MainWindow() {
                       <Text class="text-[11px] text-muted-foreground">检查更新</Text>
                     </Button>
                   </View>
+                </View>
+              </Card>
+
+              <Card style={{ padding: 0 }}>
+                <View class="px-4 py-3">
+                  <View class="flex-row items-center justify-between">
+                    <Text class="text-[12px] font-medium text-foreground">休息画面</Text>
+                    <Text class="text-[10px] text-muted-foreground">
+                      {settings().restScene === "caustic"
+                        ? "日光穿过水晶体"
+                        : settings().restScene === "random"
+                          ? "香席或光影，随兴而定"
+                          : "一炷香与茶席"}
+                    </Text>
+                  </View>
+                  <View class="mt-2">
+                    <Segmented
+                      label="休息画面"
+                      value={settings().restScene}
+                      options={SCENE_OPTIONS}
+                      onChange={(restScene) => updateSettings({ restScene })}
+                    />
+                  </View>
+                  <Text class="mt-2 text-[10px] leading-4 text-muted-foreground">
+                    {settings().restScene === "caustic"
+                      ? "水晶体把日光漾在白墙上，可以拖动。"
+                      : settings().restScene === "random"
+                        ? "每一轮休息前抛一枚铜钱：香燃尽，或日光穿墙。"
+                        : "香燃尽后斟一杯茶。"}
+                  </Text>
                 </View>
               </Card>
 

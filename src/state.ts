@@ -4,6 +4,12 @@ import { placeMainWindow } from "./popover";
 
 export type Phase = "idle" | "focus" | "rest" | "postpone";
 
+export type RestScene = "shrine" | "caustic" | "random";
+
+function isRestScene(value: unknown): value is RestScene {
+  return value === "shrine" || value === "caustic" || value === "random";
+}
+
 export interface Settings {
   workMinutes: number;
   restSeconds: number;
@@ -14,6 +20,8 @@ export interface Settings {
   hideDockIcon: boolean;
   /** Keep the rest screen frontmost and swallow keyboard and mouse input. */
   lockRest: boolean;
+  /** Which page the rest screen shows. */
+  restScene: RestScene;
 }
 
 export interface Stats {
@@ -31,6 +39,7 @@ export const DEFAULT_SETTINGS: Settings = {
   startAtLogin: false,
   hideDockIcon: true,
   lockRest: true,
+  restScene: "random",
 };
 
 const SETTINGS_KEY = "xiangzhuan.settings.v1";
@@ -65,6 +74,18 @@ export const restForced = signal(false);
 export const forceNext = signal(false);
 export const postpones = signal(0);
 export const loginError = signal<string | null>(null);
+/** The page drawn for the current rest round when the scene is set to "random"
+ * (null: the shrine). Thrown at the start of the round, so the prewarmed page
+ * and the one the rest shows are the same draw; a rest never swaps it. */
+export const restSceneDrawn = signal<"caustic" | null>(null);
+
+export const activeRestScene = computed(
+  () => (settings().restScene === "random" ? restSceneDrawn() ?? "shrine" : settings().restScene),
+);
+
+function rollRandomScene(): void {
+  if (settings().restScene === "random") restSceneDrawn.set(Math.random() < 0.5 ? "caustic" : null);
+}
 
 type RestAction = "skip" | "postpone";
 const pendingRestAction = signal<{ id: number; action: RestAction } | null>(null);
@@ -209,7 +230,10 @@ export function loadSettings(): void {
     .then((raw) => {
       if (!raw) return;
       const saved = Object.entries(JSON.parse(raw)).filter(([key]) => Object.hasOwn(DEFAULT_SETTINGS, key));
-      settings.set({ ...DEFAULT_SETTINGS, ...Object.fromEntries(saved) });
+      const merged = { ...DEFAULT_SETTINGS, ...Object.fromEntries(saved) } as Settings;
+      // A hand-edited or stale value must not pick a page that does not exist.
+      if (!isRestScene(merged.restScene)) merged.restScene = DEFAULT_SETTINGS.restScene;
+      settings.set(merged);
     })
     .catch(() => {})
     .finally(() => settingsLoaded.set(true));
@@ -251,6 +275,7 @@ export function setAllowSkip(allowSkip: boolean): void {
 
 export function startFocus(): void {
   if (phase() === "rest") return;
+  rollRandomScene();
   batch(() => startFocusCountdown(Date.now()));
 }
 
@@ -308,6 +333,7 @@ export function startRest(completedWork = false): void {
   pendingRestAction.set(null);
   if (completedWork) addFocusMinutes(settings().workMinutes);
   restReturn = phase() === "idle" ? "idle" : "focus";
+  if (phase() === "idle") rollRandomScene();
   paused.set(false);
   pausedAt = null;
   idlePausedAt.set(null);
@@ -337,6 +363,7 @@ function nextWork(): void {
     focusEnd.set(null);
     phase.set("idle");
   } else {
+    rollRandomScene();
     startFocusCountdown(Date.now());
   }
 }
@@ -414,6 +441,7 @@ function applyPostponement(): void {
   closeRestWindows();
   focusEnd.set(Date.now() + postponeMs());
   phase.set("postpone");
+  rollRandomScene();
 }
 
 function applySkip(): void {

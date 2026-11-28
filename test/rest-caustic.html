@@ -1,0 +1,1554 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>香篆 · 光影</title>
+<style>
+  :root { --ink: 58, 52, 44; }
+  html, body { margin: 0; height: 100%; background: #000; overflow: hidden; }
+  body {
+    font-family: "Songti SC", "Songti TC", "STSong", serif;
+    -webkit-user-select: none;
+    user-select: none;
+  }
+  #gl { position: fixed; inset: 0; width: 100%; height: 100%; display: block; background: #000; cursor: none; }
+
+  /* WebGL2 或浮点渲染目标不可用时的静帧：一块被夕照打亮的墙。 */
+  #fallback {
+    position: fixed; inset: 0; opacity: 0; pointer-events: none;
+    background:
+      radial-gradient(54% 66% at 69% 33%, rgba(255, 247, 226, .96), rgba(255, 240, 209, .58) 44%, rgba(255, 240, 209, 0) 72%),
+      radial-gradient(30% 44% at 58% 55%, rgba(112, 182, 152, .42), rgba(112, 182, 152, 0) 70%),
+      linear-gradient(180deg, #dcd7ce 0%, #e7e3db 58%, #cdc7bc 100%);
+  }
+
+  #hud {
+    position: fixed; left: 0; right: 0; bottom: 0; z-index: 2;
+    padding: 0 clamp(26px, 5.5vw, 92px) clamp(22px, 4.4vh, 48px);
+    display: flex; flex-direction: column; gap: clamp(10px, 1.6vh, 16px);
+    color: rgb(var(--ink));
+    opacity: 0; transition: opacity 1.3s cubic-bezier(.4, 0, .2, 1);
+    pointer-events: none;
+  }
+  #hud::before {
+    content: ""; position: absolute; inset: -96px 0 0; z-index: -1;
+    background: linear-gradient(to top, rgba(248, 244, 236, .5), rgba(248, 244, 236, 0));
+  }
+  #hud.in { opacity: 1; }
+  .meta { display: flex; justify-content: space-between; align-items: baseline; gap: 24px; }
+  #label { font-size: 12px; line-height: 1.6; letter-spacing: .2em; opacity: .78; }
+  #clock {
+    font-family: ui-monospace, "SF Mono", Menlo, monospace;
+    font-size: 12px; line-height: 1; letter-spacing: .12em;
+    font-variant-numeric: tabular-nums; opacity: .64;
+  }
+  .track { height: 1px; background: rgba(var(--ink), .14); }
+  #fill {
+    display: block; height: 1px; width: 100%;
+    background: rgba(var(--ink), .42);
+    transform: scaleX(1); transform-origin: 0 50%;
+    transition: transform 1s linear;
+  }
+
+  #actions {
+    position: fixed; left: 50%; bottom: clamp(88px, 13vh, 148px); z-index: 3;
+    display: flex; gap: 14px;
+    opacity: 0; pointer-events: none;
+    transform: translate(-50%, 8px);
+    transition: opacity .6s ease, transform .6s ease;
+  }
+  #actions.in { opacity: 1; pointer-events: auto; transform: translate(-50%, 0); }
+  #actions button {
+    font: inherit; font-size: 12px; letter-spacing: .16em;
+    color: rgba(var(--ink), .8);
+    background: rgba(252, 249, 242, .5);
+    border: 1px solid rgba(var(--ink), .22);
+    border-radius: 999px; padding: 9px 20px 10px;
+    -webkit-backdrop-filter: blur(8px); backdrop-filter: blur(8px);
+    cursor: pointer; transition: background .2s ease, border-color .2s ease, transform .1s ease;
+  }
+  #actions button:hover { background: rgba(252, 249, 242, .78); border-color: rgba(var(--ink), .4); }
+  #actions button:active { transform: scale(.97); }
+  [hidden] { display: none !important; }
+
+  #confirm {
+    position: fixed; z-index: 5; left: 50%; top: 50%; transform: translate(-50%, -50%);
+    border: 1px solid rgba(var(--ink), .14); border-radius: 16px;
+    padding: 30px 32px 24px; width: min(360px, 82vw);
+    background: rgba(250, 247, 240, .96); color: rgb(var(--ink));
+    box-shadow: 0 30px 90px rgba(20, 16, 10, .35);
+  }
+  #veil {
+    position: fixed; inset: 0; z-index: 4;
+    background: rgba(10, 8, 6, .28);
+  }
+  #confirm h2 { margin: 0 0 10px; font-size: 16px; font-weight: 600; letter-spacing: .08em; }
+  #confirm p { margin: 0 0 24px; font-size: 12px; line-height: 1.8; letter-spacing: .08em; color: rgba(var(--ink), .62); }
+.confirm-actions { display: flex; justify-content: flex-end; gap: 10px; }
+.confirm-actions button:focus-visible { outline: 1px solid rgba(var(--ink), .45); outline-offset: 2px; }
+  .confirm-actions button {
+    font: inherit; font-size: 12px; letter-spacing: .1em;
+    padding: 8px 16px 9px; border-radius: 8px;
+    border: 1px solid rgba(var(--ink), .18); background: transparent;
+    color: rgba(var(--ink), .72); cursor: pointer;
+  }
+  .confirm-actions button:hover { border-color: rgba(var(--ink), .38); }
+  #confirm-accept { background: rgba(var(--ink), .88); color: #f7f3ea; border-color: transparent; }
+</style>
+</head>
+<body>
+<canvas id="gl"></canvas>
+<div id="fallback" aria-hidden="true"></div>
+
+<div id="hud">
+  <div class="meta">
+    <span id="label">把眼睛从屏幕上移开。</span>
+    <span id="clock">01:30</span>
+  </div>
+  <div class="track"><i id="fill"></i></div>
+</div>
+
+<div id="actions">
+  <button id="btn-postpone" type="button">延后 5 分钟</button>
+  <button id="btn-skip" type="button">提前结束</button>
+</div>
+
+<div id="veil" aria-hidden="true" hidden></div>
+<div id="confirm" role="dialog" aria-modal="true" aria-labelledby="confirm-title" aria-describedby="confirm-note" hidden>
+  <h2 id="confirm-title">提前结束这次休息？</h2>
+  <p id="confirm-note">下次为强制休息，届时不能跳过或延后。</p>
+  <div class="confirm-actions">
+    <button id="confirm-cancel" type="button">继续休息</button>
+    <button id="confirm-accept" type="button">确认跳过</button>
+  </div>
+</div>
+
+<script>
+(() => {
+  'use strict';
+
+  // ==========================================================================
+  // 0. 宿主契约
+  //
+  // 和香篆页同一套消息：宿主 postMessage 一个 { type: "state", ... } 的 JSON，
+  // 页面回 ready / skip / postpone / done / confirm:<id> / cancel:<id>。
+  // 倒计时一律来自 remainingMs，页面不自己累加。
+  // ==========================================================================
+  const isHosted = !!(window.nsh && typeof window.nsh.postMessage === 'function');
+  const DEFAULT_LABEL = '把眼睛从屏幕上移开。';
+
+  function emitHost(message) {
+    if (isHosted) {
+      try {
+        window.nsh.postMessage(message);
+      } catch (error) {
+        console.log('[nsh]', message, error);
+      }
+    } else {
+      console.log('[nsh]', message);
+    }
+  }
+
+  const state = {
+    active: false,
+    remainingMs: 90_000,
+    totalMs: 90_000,
+    progress: 0,
+    canPostpone: false,
+    postponeMinutes: 5,
+    canSkip: false,
+    actionConfirmation: null,
+    forced: false,
+    locked: true,
+    label: DEFAULT_LABEL,
+    visitSeed: null,
+    outro: false,
+  };
+
+  const dom = {
+    canvas: document.getElementById('gl'),
+    fallback: document.getElementById('fallback'),
+    hud: document.getElementById('hud'),
+    label: document.getElementById('label'),
+    clock: document.getElementById('clock'),
+    fill: document.getElementById('fill'),
+    actions: document.getElementById('actions'),
+    btnPostpone: document.getElementById('btn-postpone'),
+    btnSkip: document.getElementById('btn-skip'),
+    veil: document.getElementById('veil'),
+    dialog: document.getElementById('confirm'),
+    confirmTitle: document.getElementById('confirm-title'),
+    confirmNote: document.getElementById('confirm-note'),
+    confirmCancel: document.getElementById('confirm-cancel'),
+    confirmAccept: document.getElementById('confirm-accept'),
+  };
+
+  function formatClock(ms) {
+    const total = Math.max(0, Math.ceil((Number(ms) || 0) / 1000));
+    const m = Math.floor(total / 60);
+    const s = total % 60;
+    return String(m).padStart(2, '0') + ':' + String(s).padStart(2, '0');
+  }
+
+  function smooth01(x, a, b) {
+    const t = Math.min(1, Math.max(0, (x - a) / (b - a)));
+    return t * t * (3 - 2 * t);
+  }
+
+  // 同一次休息在所有显示器上抽到同一块玻璃：种子取本轮的 restEnd。
+  function mulberry32(seed) {
+    let a = seed >>> 0;
+    return function () {
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  // ==========================================================================
+  // 1. 场景：白墙上一块被水晶体折射出的夕照。
+  //
+  // 移植自 codevember 010 “Caustic”。三段渲染：
+  //   trace   从窗外朝水晶体打 255×255 条光线，折射/内反射后落到墙、地台或地面；
+  //   caustic 把落点网格的三角形面积比写成照度，得到焦散图（两张：墙 / 地面）；
+  //   room    一张全屏光线追踪的房间，用焦散图的 mip 叠出锐利光斑与柔光。
+  // 原版把 trace/caustic 放 Worker；这里放在主线程，省掉 OffscreenCanvas 兼容面。
+  // ==========================================================================
+  const PIXEL_BUDGET = 2_400_000;
+  const MAP_SMALL = 1280;
+  const MAP_LARGE = 2048;
+  const CAUSTIC_GAIN = 0.25;
+  const WAVE_AMP = 0.04;
+  const WAVE_FREQ = 1.5;
+  const SQUISH_CLAMP = 0.06;
+  const SUN_DRIFT = 0.14;
+
+  const PLINTH = {
+    PLINTH_X_M: -0.35,
+    PLINTH_Z_M: 0.6,
+    PLINTH_HALF_M: 0.38,
+    PLINTH_H_M: 0.92,
+    R_M: 0.36,
+    WALL_X_M: -2.6,
+    CEIL_M: 4.2,
+  };
+  const WALL_RECT = [-1.6, 0, 4.2, 2.1];
+  const FLOOR_RECT = [-1.6, 0, 4.2, 2.1];
+  const SHAPE_BOUNDS = [0.36, 0.51, 0.46];
+  const TINT_NAMES = ['clear', 'emerald', 'amber', 'pink', 'ink'];
+  const TINTS = {
+    clear: [0.5, 0.14, 0.09],
+    emerald: [2.6, 0.32, 1.5],
+    amber: [0.12, 0.85, 3.2],
+    pink: [0.12, 2.1, 0.8],
+    ink: [3.4, 2.4, 0.75],
+  };
+
+  const fix4 = (value) => value.toFixed(4);
+  const SURFACE = `
+const vec3 C = vec3(${fix4(PLINTH.PLINTH_X_M)}, ${fix4(PLINTH.PLINTH_H_M + PLINTH.R_M)}, ${fix4(PLINTH.PLINTH_Z_M)});
+const vec3 PLINTH_C = vec3(${fix4(PLINTH.PLINTH_X_M)}, ${fix4(PLINTH.PLINTH_H_M / 2)}, ${fix4(PLINTH.PLINTH_Z_M)});
+const vec3 PLINTH_B = vec3(${fix4(PLINTH.PLINTH_HALF_M)}, ${fix4(PLINTH.PLINTH_H_M / 2)}, ${fix4(PLINTH.PLINTH_HALF_M)});
+const float PLINTH_H = ${fix4(PLINTH.PLINTH_H_M)};
+const float R = ${fix4(PLINTH.R_M)};
+const float XW = ${fix4(PLINTH.WALL_X_M)};
+const float CEIL = ${fix4(PLINTH.CEIL_M)};
+const vec4 WIN = vec4(1.6, 1.25, 0.62, 0.55);
+
+uniform float uTime;
+uniform float uWave;
+uniform vec4  uSq;
+uniform int   uShape;
+uniform int   uFrom;
+uniform float uMorph;
+uniform float uBound;
+uniform vec3  uSun;
+uniform vec2  uWin;
+
+// SURFACE
+// 表皮沿法线起伏；基形不动，所以水晶体始终停在铜座上。
+float disp(vec3 q) {
+  vec3 n = q / max(length(q), 1e-4);
+  float t = uTime;
+  float w = sin(dot(n, vec3(0.83, 0.42, 0.37)) * 5.0 + t * 1.3) * 0.42
+          + sin(dot(n, vec3(-0.31, 0.88, 0.36)) * 8.0 - t * 1.7) * 0.28
+          + sin(dot(n, vec3(0.45, -0.27, 0.85)) * 12.0 + t * 2.3) * 0.17
+          + sin(dot(n, vec3(-0.70, -0.50, 0.50)) * 17.0 - t * 2.9) * 0.09
+          + sin(dot(n, vec3(0.20, 0.60, -0.77)) * 25.0 + t * 3.4) * 0.05
+          + sin(dot(n, vec3(-0.60, 0.10, -0.79)) * 33.0 - t * 4.1) * 0.03;
+  float sq = uSq.x * (1.5 * n.x * n.x - 0.5) + uSq.y * (1.5 * n.y * n.y - 0.5)
+           + uSq.z * (n.x * n.z * 2.4 + n.y * n.z * 1.6);
+  return (w * uWave + sq) * smoothstep(-0.98, -0.55, n.y);
+}
+
+float roundCone(vec3 p, float r1, float r2, float h) {
+  float b = (r1 - r2) / h;
+  float a = sqrt(1.0 - b * b);
+  vec2 q = vec2(length(p.xz), p.y);
+  float k = dot(q, vec2(-b, a));
+  if (k < 0.0) return length(q) - r1;
+  if (k > a * h) return length(q - vec2(0.0, h)) - r2;
+  return dot(q, vec2(a, b)) - r1;
+}
+
+float roundBox(vec3 p, vec3 b, float r) {
+  vec3 q = abs(p) - b;
+  return length(max(q, 0.0)) + min(max(q.x, max(q.y, q.z)), 0.0) - r;
+}
+
+float form(int s, vec3 q) {
+  if (s == 0) return length(q) - R;
+  if (s == 1) return roundCone(q - vec3(0.0, -R + 0.32, 0.0), 0.32, 0.035, 0.5);
+  vec3 b = q - vec3(0.0, -R + 0.27, 0.0);
+  float cs = 0.8253;
+  float sn = 0.5646;
+  b.xz = mat2(cs, sn, -sn, cs) * b.xz;
+  return roundBox(b, vec3(0.175), 0.095);
+}
+
+// MORPH
+float shape(vec3 q) {
+  float d = form(uShape, q);
+  return uMorph < 1.0 ? mix(form(uFrom, q), d, uMorph) : d;
+}
+
+float sdf(vec3 p) {
+  vec3 q = p - C;
+  return shape(q) - disp(q);
+}
+
+vec3 normal(vec3 p) {
+  const vec2 e = vec2(1.0, -1.0) * 7e-4;
+  return normalize(e.xyy * sdf(p + e.xyy) + e.yyx * sdf(p + e.yyx) +
+                   e.yxy * sdf(p + e.yxy) + e.xxx * sdf(p + e.xxx));
+}
+
+vec2 bound(vec3 ro, vec3 rd) {
+  vec3 oc = ro - C;
+  float b = dot(oc, rd);
+  float c = dot(oc, oc) - uBound * uBound;
+  float h = b * b - c;
+  if (h < 0.0) return vec2(1.0, -1.0);
+  h = sqrt(h);
+  return vec2(-b - h, -b + h);
+}
+
+bool hitShape(vec3 ro, vec3 rd, out float t) {
+  vec2 b = bound(ro, rd);
+  t = max(b.x, 0.0);
+  if (b.y < 0.0) return false;
+  for (int i = 0; i < 64; i++) {
+    float d = sdf(ro + rd * t);
+    if (d < 2e-4) return true;
+    t += d * 0.8;
+    if (t > b.y) return false;
+  }
+  return false;
+}
+
+vec3 exitShape(vec3 p, vec3 d) {
+  float t = 0.0;
+  for (int i = 0; i < 40; i++) {
+    float s = -sdf(p + d * t);
+    if (s < 2e-4) break;
+    t += max(s * 0.8, 1e-3);
+  }
+  return p + d * t;
+}
+
+float fresnel(float c, float f0) {
+  return f0 + (1.0 - f0) * pow(1.0 - clamp(c, 0.0, 1.0), 5.0);
+}
+
+// WINDOW
+// 三扇窗和一道横梁；边缘随离玻璃的距离变软。
+float window(vec3 p) {
+  float t = (XW - p.x) / uSun.x;
+  vec3 w = p + uSun * t;
+  vec2 q = vec2(w.z - uWin.x, w.y - uWin.y);
+  float s = 0.004 + 0.006 * t;
+  float open = smoothstep(-s, s, WIN.x - abs(q.x)) * smoothstep(-s, s, WIN.y - abs(q.y));
+  float bars = smoothstep(-s, s, 0.035 - abs(abs(q.x) - WIN.z));
+  bars = max(bars, smoothstep(-s, s, 0.035 - abs(q.y - WIN.w)));
+  return open * (1.0 - bars);
+}
+
+// PLINTH
+float boxRay(vec3 ro, vec3 rd, out vec3 n) {
+  vec3 m = 1.0 / rd;
+  vec3 o = ro - PLINTH_C;
+  vec3 k = abs(m) * PLINTH_B;
+  vec3 t1 = -m * o - k;
+  vec3 t2 = -m * o + k;
+  float tn = max(max(t1.x, t1.y), t1.z);
+  float tf = min(min(t2.x, t2.y), t2.z);
+  n = vec3(0.0);
+  if (tn > tf || tf < 0.0) return -1.0;
+  n = -sign(rd) * step(t1.yzx, t1.xyz) * step(t1.zxy, t1.xyz);
+  return tn;
+}
+`;
+
+  const FULLSCREEN_VERT = `#version 300 es
+void main() {
+  vec2 p = vec2(float((gl_VertexID << 1) & 2), float(gl_VertexID & 2));
+  gl_Position = vec4(p * 2.0 - 1.0, 0.0, 1.0);
+}`;
+
+  const TRACE_FRAG = `#version 300 es
+precision highp float;
+precision highp int;
+${SURFACE}
+uniform vec3 uIor;
+uniform vec3 uAbsorb;
+layout(location = 0) out vec4 o0;
+layout(location = 1) out vec4 o1;
+layout(location = 2) out vec4 o2;
+layout(location = 3) out vec4 o3;
+
+vec4 land(vec3 e, vec3 d, out float wallOk, out float flatOk, out float top) {
+  vec3 bn;
+  float tb = boxRay(e, d, bn);
+  float tw = d.z < -1e-4 ? -e.z / d.z : -1.0;
+  float tf = d.y < -1e-4 ? -e.y / d.y : -1.0;
+  vec3 pw = e + d * max(tw, 0.0);
+  vec3 pf = e + d * max(tf, 0.0);
+  wallOk = tw > 0.0 ? 1.0 : 0.0;
+  flatOk = tf > 0.0 ? 1.0 : 0.0;
+  top = 0.0;
+  vec2 hz = pf.xz;
+  bool inside = all(lessThan(abs(e - PLINTH_C), PLINTH_B + 0.01));
+  if (inside || tb > 0.0) {
+    vec3 pb = e + d * max(tb, 0.0);
+    if (pb.y > PLINTH_H - 0.02) {
+      top = 1.0;
+      flatOk = 1.0;
+      hz = pb.xz;
+    } else flatOk = 0.0;
+    wallOk = 0.0;
+  }
+  return vec4(pw.xy, hz);
+}
+
+void main() {
+  vec2 g = floor(gl_FragCoord.xy) / 255.0 * 2.0 - 1.0;
+  vec3 u = normalize(cross(uSun, vec3(0.0, 1.0, 0.0)));
+  vec3 v = cross(u, uSun);
+  vec3 d = -uSun;
+  vec3 o = C + uSun * 2.0 + (u * g.x + v * g.y) * uBound;
+  float win = window(o);
+  float t;
+  o0 = o1 = o2 = o3 = vec4(0.0);
+  if (win < 1e-3 || !hitShape(o, d, t)) return;
+  vec3 p1 = o + d * t;
+  vec3 n1 = normal(p1);
+  float ci = dot(-d, n1);
+  vec4 l[3];
+  float pk[3];
+  for (int ch = 0; ch < 3; ch++) {
+    float ior = uIor[ch];
+    float f0 = (ior - 1.0) / (ior + 1.0);
+    f0 *= f0;
+    vec3 d1 = refract(d, n1, 1.0 / ior);
+    vec3 p2 = exitShape(p1 - n1 * 2e-3, d1);
+    vec3 n2 = normal(p2);
+    float len = length(p2 - p1);
+    vec3 d2 = refract(d1, -n2, ior);
+    float keep = (1.0 - fresnel(ci, f0)) * (1.0 - fresnel(dot(d2, n2), f0));
+    if (dot(d2, d2) < 0.5) {
+      // 全内反射：再走一段，从下一个面出去。
+      vec3 db = reflect(d1, -n2);
+      vec3 p3 = exitShape(p2 - n2 * 2e-3, db);
+      vec3 n3 = normal(p3);
+      len += length(p3 - p2);
+      d2 = refract(db, -n3, ior);
+      p2 = p3;
+      keep = dot(d2, d2) < 0.5 ? 0.0 : (1.0 - fresnel(ci, f0)) * 0.85;
+    }
+    float w = keep * exp(-uAbsorb[ch] * len) * win * smoothstep(0.0, 0.25, ci);
+    float wo;
+    float fo;
+    float tp;
+    l[ch] = land(p2, d2, wo, fo, tp);
+    pk[ch] = min(w, 0.999) + 2.0 * wo + 4.0 * fo + 8.0 * tp;
+  }
+  o0 = l[0];
+  o1 = l[1];
+  o2 = l[2];
+  o3 = vec4(pk[0], pk[1], pk[2], 1.0);
+}`;
+
+  // 每个落点网格取相邻 texel 画出两个三角形，片元里用屏幕导数算面积比（照度）。
+  const CAUSTIC_VERT = `#version 300 es
+precision highp float;
+precision highp int;
+uniform highp sampler2D uPos;
+uniform highp sampler2D uPack;
+uniform int  uChan;
+uniform int  uRecv;
+uniform vec4 uRect;
+uniform float uCell;
+out vec2 vOld;
+out vec2 vNew;
+out float vW;
+out float vOk;
+out float vTop;
+void main() {
+  ivec2 c = ivec2(gl_VertexID % 256, gl_VertexID / 256);
+  vec4 p = texelFetch(uPos, c, 0);
+  float k = texelFetch(uPack, c, 0)[uChan];
+  float top = step(8.0, k);
+  k -= top * 8.0;
+  float flatOk = step(4.0, k);
+  k -= flatOk * 4.0;
+  float wallOk = step(2.0, k);
+  k -= wallOk * 2.0;
+  vec2 at = uRecv == 0 ? p.xy : p.zw;
+  vOk = uRecv == 0 ? wallOk : flatOk;
+  vTop = top;
+  vW = k;
+  vOld = vec2(c) * uCell;
+  vNew = at;
+  // CULL: 未命中或跑出接收面的三角形推到远平面外，整格裁掉。
+  vec2 uv = (at - uRect.xy) / uRect.zw;
+  bool off = vOk < 0.5 || any(lessThan(uv, vec2(-0.25))) || any(greaterThan(uv, vec2(1.25)));
+  gl_Position = vec4(uv * 2.0 - 1.0, off ? 1e3 : 0.0, 1.0);
+}`;
+
+  const CAUSTIC_FRAG = `#version 300 es
+precision highp float;
+uniform float uGain;
+in vec2 vOld;
+in vec2 vNew;
+in float vW;
+in float vOk;
+in float vTop;
+out vec4 outColor;
+void main() {
+  if (vOk < 0.999 || fwidth(vTop) > 1e-3) discard;
+  vec2 a = dFdx(vOld);
+  vec2 b = dFdy(vOld);
+  vec2 c = dFdx(vNew);
+  vec2 d = dFdy(vNew);
+  float before = abs(a.x * b.y - a.y * b.x);
+  float after = abs(c.x * d.y - c.y * d.x);
+  float k = min(before / max(after, 1e-14), 160.0);
+  outColor = vec4(vec3(k * vW * uGain), 1.0);
+}`;
+
+  const ROOM_FRAG = `#version 300 es
+precision highp float;
+precision highp int;
+${SURFACE}
+uniform vec3 uIor;
+uniform vec3 uAbsorb;
+uniform vec3 uEye;
+uniform vec3 uRight;
+uniform vec3 uUp;
+uniform vec3 uFwd;
+uniform float uFocal;
+uniform vec2 uRes;
+uniform sampler2D uWall;
+uniform sampler2D uFloor;
+uniform vec4 uWallRect;
+uniform vec4 uFloorRect;
+uniform float uGain;
+uniform float uLight;
+out vec4 outColor;
+
+const vec3 PLASTER = vec3(0.93, 0.915, 0.89);
+const float GAP_M = 0.01;
+const float GAP_DARK = 0.6;
+const vec3 CONCRETE = vec3(0.86, 0.82, 0.76);
+const vec3 STONE = vec3(0.93, 0.925, 0.91);
+const vec3 SUN = vec3(1.0, 0.77, 0.52) * 3.0;
+const vec3 SKY = vec3(0.60, 0.63, 0.70) * 0.52;
+const vec3 BOUNCE = vec3(0.80, 0.66, 0.52) * 0.42;
+const vec3 GLASS = vec3(1.0, 0.95, 0.88) * 12.0;
+const float EXPOSURE = 1.15;
+const float GLOSS = 0.55;
+
+float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+float noise(vec2 p) {
+  vec2 i = floor(p);
+  vec2 u = fract(p);
+  u = u * u * (3.0 - 2.0 * u);
+  return mix(mix(hash(i), hash(i + vec2(1.0, 0.0)), u.x),
+             mix(hash(i + vec2(0.0, 1.0)), hash(i + 1.0), u.x), u.y);
+}
+
+// SURFACE IDS: 0 后墙, 1 地面, 2 地台, 3 窗墙, 4 天花板, 5 空
+float room(vec3 ro, vec3 rd, out vec3 n, out int id) {
+  float t = 1e4;
+  id = 5;
+  n = -rd;
+  if (rd.z < 0.0) { float s = -ro.z / rd.z; if (s > 1e-4 && s < t) { t = s; id = 0; n = vec3(0.0, 0.0, 1.0); } }
+  if (rd.y < 0.0) { float s = -ro.y / rd.y; if (s > 1e-4 && s < t) { t = s; id = 1; n = vec3(0.0, 1.0, 0.0); } }
+  if (rd.y > 0.0) { float s = (CEIL - ro.y) / rd.y; if (s > 1e-4 && s < t) { t = s; id = 4; n = vec3(0.0, -1.0, 0.0); } }
+  if (rd.x < 0.0) { float s = (XW - ro.x) / rd.x; if (s > 1e-4 && s < t) { t = s; id = 3; n = vec3(1.0, 0.0, 0.0); } }
+  vec3 bn;
+  float s = boxRay(ro, rd, bn);
+  if (s > 1e-4 && s < t) { t = s; id = 2; n = bn; }
+  return t;
+}
+
+// SHADOWS: 地台硬，水晶体按最近距离软。
+float sunVis(vec3 p) {
+  float v = window(p);
+  if (v < 1e-3) return 0.0;
+  vec3 bn;
+  if (boxRay(p, uSun, bn) > 0.0) return 0.0;
+  vec2 b = bound(p, uSun);
+  if (b.y > 0.0) {
+    float t = max(b.x, 0.0);
+    for (int i = 0; i < 28; i++) {
+      float h = sdf(p + uSun * t);
+      v = min(v, 80.0 * h / max(t, 0.05));
+      t += clamp(h, 0.006, 0.12);
+      if (v < 1e-3 || t > b.y) break;
+    }
+  }
+  return clamp(v, 0.0, 1.0);
+}
+
+// CAUSTIC: 一张锐利图 + 两级模糊叠出光晕。
+vec3 caustic(sampler2D tex, vec4 rect, vec2 at, float lod) {
+  vec2 uv = (at - rect.xy) / rect.zw;
+  if (any(lessThan(uv, vec2(0.0))) || any(greaterThan(uv, vec2(1.0)))) return vec3(0.0);
+  vec3 c = textureLod(tex, uv, lod).rgb;
+  c += textureLod(tex, uv, lod + 2.5).rgb * 0.16;
+  c += textureLod(tex, uv, lod + 4.5).rgb * 0.14;
+  vec2 e = min(uv, 1.0 - uv);
+  return c / uGain * smoothstep(0.0, 0.04, min(e.x, e.y));
+}
+
+vec3 shade(vec3 p, vec3 n, int id, float lod, bool seen) {
+  if (id == 5) return vec3(0.55, 0.52, 0.5);
+  vec3 alb = PLASTER;
+  float ao = 1.0;
+  if (id == 0) {
+    alb *= 0.975 + 0.035 * noise(p.xy * 9.0) + 0.02 * noise(p.xy * 1.3);
+    ao *= 1.0 - 0.32 * exp(-p.y / 0.22);
+    ao *= 1.0 - 0.3 * exp(-(p.x - XW) / 0.3);
+    alb *= 1.0 - GAP_DARK * smoothstep(GAP_M, GAP_M * 0.6, p.y);
+  } else if (id == 1) {
+    float m = noise(p.xz * 1.7) * 0.6 + noise(p.xz * 7.0) * 0.3 + noise(p.xz * 40.0) * 0.1;
+    alb = CONCRETE * (0.9 + 0.16 * m);
+    vec2 j = abs(fract(p.xz / vec2(1.6, 1.6) + 0.5) - 0.5) * 1.6;
+    alb *= 1.0 - 0.18 * smoothstep(0.006, 0.0, min(j.x, j.y));
+    ao *= 1.0 - 0.32 * exp(-p.z / 0.24);
+    ao *= 1.0 - 0.3 * exp(-(p.x - XW) / 0.3);
+    vec2 pq = abs(p.xz - PLINTH_C.xz) - PLINTH_B.xz;
+    float pd = length(max(pq, 0.0));
+    ao *= 1.0 - 0.55 * exp(-pd / 0.07);
+  } else if (id == 2) {
+    alb = STONE;
+    ao *= 1.0 - 0.3 * exp(-p.y / 0.08);
+    if (n.y > 0.5) ao *= 1.0 - 0.5 * exp(-max(length(p.xz - C.xz) - 0.18, 0.0) / 0.06);
+  } else if (id == 3) {
+    vec2 q = vec2(p.z - uWin.x, p.y - uWin.y);
+    float glass = step(abs(q.x), WIN.x) * step(abs(q.y), WIN.y);
+    glass *= step(0.035, abs(abs(q.x) - WIN.z)) * step(0.035, abs(q.y - WIN.w));
+    if (glass > 0.5 && !seen) return GLASS;
+    alb *= 1.0 - GAP_DARK * smoothstep(GAP_M, GAP_M * 0.6, p.y);
+    ao *= 1.0 - 0.3 * exp(-p.z / 0.3);
+  }
+  vec3 amb = mix(BOUNCE, SKY, n.y * 0.35 + 0.5);
+  amb *= 0.8 + 0.55 * exp(-(p.x - XW) / 2.0) + 0.25 * max(-dot(n, vec3(1.0, 0.0, 0.0)), 0.0);
+  float cs = max(dot(n, uSun), 0.0);
+  float vis = cs > 0.0 ? sunVis(p + n * 1e-3) : 0.0;
+  vec3 c = vec3(0.0);
+  if (id == 0) c = caustic(uWall, uWallRect, p.xy, lod);
+  else if (id == 1 || (id == 2 && n.y > 0.5)) c = caustic(uFloor, uFloorRect, p.xz, lod);
+  return alb * (amb * ao + SUN * (vis * cs + c));
+}
+
+vec3 look(vec3 ro, vec3 rd, float lod) {
+  vec3 n;
+  int id;
+  float t = room(ro, rd, n, id);
+  return shade(ro + rd * t, n, id, lod, false);
+}
+
+// SCULPTURE
+vec3 sculpture(vec3 p, vec3 rd) {
+  vec3 n = normal(p);
+  float ior = uIor.g;
+  float f0 = (ior - 1.0) / (ior + 1.0);
+  f0 *= f0;
+  float fr = fresnel(dot(-rd, n), f0);
+  vec3 r = reflect(rd, n);
+  vec3 refl = look(p + n * 2e-3, r, 1.0);
+  float lit = window(p);
+  refl += SUN * lit * (pow(max(dot(r, uSun), 0.0), 900.0) * 140.0 + pow(max(dot(r, uSun), 0.0), 70.0) * 2.0);
+
+  vec3 d1 = refract(rd, n, 1.0 / ior);
+  vec3 p2 = exitShape(p - n * 2e-3, d1);
+  vec3 n2 = normal(p2);
+  float len = length(p2 - p);
+  vec3 thru;
+  for (int ch = 0; ch < 3; ch++) {
+    vec3 d2 = refract(d1, -n2, uIor[ch]);
+    if (dot(d2, d2) < 0.5) d2 = reflect(d1, -n2);
+    thru[ch] = look(p2 + d2 * 2e-3, d2, 0.0)[ch];
+  }
+  vec3 tint = exp(-uAbsorb * len);
+  float gather = pow(max(dot(n2, -uSun), 0.0), 4.0) * 1.2 + pow(max(dot(n2, -uSun), 0.0), 24.0) * 4.0;
+  vec3 glow = SUN * lit * gather * sqrt(tint);
+  vec3 col = (thru * tint + glow) * (1.0 - fr) + refl * fr;
+  return col;
+}
+
+vec3 aces(vec3 x) {
+  return clamp((x * (2.51 * x + 0.03)) / (x * (2.43 * x + 0.59) + 0.14), 0.0, 1.0);
+}
+
+void main() {
+  vec2 ndc = gl_FragCoord.xy / uRes * 2.0 - 1.0;
+  ndc.x *= uRes.x / uRes.y;
+  vec3 rd = normalize(uFwd * uFocal + uRight * ndc.x + uUp * ndc.y);
+  vec3 ro = uEye;
+  vec3 n;
+  int id;
+  float t = room(ro, rd, n, id);
+  float ts;
+  vec3 col;
+  if (hitShape(ro, rd, ts) && ts < t) col = sculpture(ro + rd * ts, rd);
+  else {
+    vec3 p = ro + rd * t;
+    col = shade(p, n, id, 0.0, true);
+    if (id == 1) {
+      vec3 r = reflect(rd, n);
+      vec3 q = p + n * 1e-3;
+      vec3 rn;
+      int rid;
+      float rt = room(q, r, rn, rid);
+      float rs;
+      vec3 rc;
+      if (hitShape(q, r, rs) && rs < rt) {
+        vec3 ps = q + r * rs;
+        rc = look(ps, r, 2.0) * exp(-uAbsorb * 0.5) * 0.85;
+      } else rc = shade(q + r * rt, rn, rid, 2.0, false);
+      float fr = fresnel(dot(-rd, n), 0.03);
+      col = mix(col, rc, fr * GLOSS);
+    }
+  }
+  col = aces(col * EXPOSURE * uLight);
+  col = pow(col, vec3(1.0 / 2.2));
+  vec2 uv = gl_FragCoord.xy / uRes - 0.5;
+  col *= 1.0 - 0.18 * dot(uv, uv);
+  col += (hash(gl_FragCoord.xy) - 0.5) / 255.0;
+  outColor = vec4(col, 1.0);
+}`;
+
+  function buildShader(gl, type, source) {
+    const shader = gl.createShader(type);
+    gl.shaderSource(shader, source);
+    gl.compileShader(shader);
+    if (!gl.getShaderParameter(shader, gl.COMPILE_STATUS)) {
+      const log = gl.getShaderInfoLog(shader);
+      gl.deleteShader(shader);
+      throw new Error(log || 'shader compile failed');
+    }
+    return shader;
+  }
+
+  function buildProgram(gl, vertexSource, fragmentSource) {
+    const program = gl.createProgram();
+    const vertex = buildShader(gl, gl.VERTEX_SHADER, vertexSource);
+    const fragment = buildShader(gl, gl.FRAGMENT_SHADER, fragmentSource);
+    gl.attachShader(program, vertex);
+    gl.attachShader(program, fragment);
+    gl.linkProgram(program);
+    gl.deleteShader(vertex);
+    gl.deleteShader(fragment);
+    if (!gl.getProgramParameter(program, gl.LINK_STATUS)) {
+      throw new Error(gl.getProgramInfoLog(program) || 'program link failed');
+    }
+    return program;
+  }
+
+  function uniformLocations(gl, program, names) {
+    const locations = {};
+    for (const name of names) locations[name] = gl.getUniformLocation(program, name);
+    return locations;
+  }
+
+  const COMMON_UNIFORMS = [
+    'uTime', 'uWave', 'uSq', 'uShape', 'uFrom', 'uMorph', 'uBound',
+    'uSun', 'uWin', 'uIor', 'uAbsorb',
+  ];
+
+  // 与宿主无关的纯渲染器。窗口大小、材质、日光都由页面驱动。
+  class CausticEngine {
+    constructor(canvas) {
+      const gl = canvas.getContext('webgl2', {
+        antialias: false, alpha: false, depth: false, stencil: false,
+        powerPreference: 'high-performance',
+      });
+      if (!gl) throw new Error('webgl2 unavailable');
+      if (!gl.getExtension('EXT_color_buffer_float')) throw new Error('float render targets unavailable');
+
+      this.gl = gl;
+      this.canvas = canvas;
+      this.trace = buildProgram(gl, FULLSCREEN_VERT, TRACE_FRAG);
+      this.caustic = buildProgram(gl, CAUSTIC_VERT, CAUSTIC_FRAG);
+      this.room = buildProgram(gl, FULLSCREEN_VERT, ROOM_FRAG);
+      this.tu = uniformLocations(gl, this.trace, COMMON_UNIFORMS);
+      this.cu = uniformLocations(gl, this.caustic, [
+        'uPos', 'uPack', 'uChan', 'uRecv', 'uRect', 'uCell', 'uGain',
+      ]);
+      this.ru = uniformLocations(gl, this.room, [
+        ...COMMON_UNIFORMS, 'uEye', 'uRight', 'uUp', 'uFwd', 'uFocal', 'uRes',
+        'uWall', 'uFloor', 'uWallRect', 'uFloorRect', 'uGain', 'uLight',
+      ]);
+
+      this.rect = { width: 1, height: 1 };
+      this.px = { w: 1, h: 1 };
+      this.mapW = 0;
+      this.adapt = 1;
+      this.baseScale = 1;
+      this.aspect = 0;
+      this.hit = [0, 0, 0];
+      this.cam = { eye: new Float32Array(3), fwd: new Float32Array(3), right: new Float32Array(3), up: new Float32Array(3), focal: 3 };
+      this.shape = 0;
+      this.from = 0;
+      this.morph = 1;
+      this.iors = new Float32Array(3);
+      this.absorb = new Float32Array(3);
+      this.wave = 0.45;
+      this.flow = 0.5;
+      this.sunK = 0.4;
+      this.sunTarget = 0.4;
+      this.sun = new Float32Array(3);
+      this.win = new Float32Array(2);
+      this.t = 0;
+      this.sq = new Float32Array(4);
+      this.sqV = new Float32Array(3);
+      this.pointer = -1;
+      this.lastX = 0;
+      this.lastY = 0;
+      this.light = 0;
+      this.tintName = 'clear';
+      this.frameAvg = 16.7;
+      this.frames = 0;
+      this.adaptCooldown = 0;
+
+      this.initTargets();
+    }
+
+    initTargets() {
+      const gl = this.gl;
+      this.rayTex = [];
+      this.mapTex = [];
+      this.mapFbo = [];
+      this.rayFbo = gl.createFramebuffer();
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.rayFbo);
+      for (let i = 0; i < 4; i++) {
+        const texture = gl.createTexture();
+        gl.bindTexture(gl.TEXTURE_2D, texture);
+        gl.texStorage2D(gl.TEXTURE_2D, 1, gl.RGBA32F, 256, 256);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.NEAREST);
+        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.NEAREST);
+        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0 + i, gl.TEXTURE_2D, texture, 0);
+        this.rayTex.push(texture);
+      }
+      gl.drawBuffers([gl.COLOR_ATTACHMENT0, gl.COLOR_ATTACHMENT1, gl.COLOR_ATTACHMENT2, gl.COLOR_ATTACHMENT3]);
+      if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+        throw new Error('ray target incomplete');
+      }
+      for (let i = 0; i < 2; i++) {
+        this.mapTex.push(gl.createTexture());
+        this.mapFbo.push(gl.createFramebuffer());
+      }
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+
+      const indices = new Uint32Array(390150);
+      let at = 0;
+      for (let y = 0; y < 255; y++) {
+        for (let x = 0; x < 255; x++) {
+          const n = y * 256 + x;
+          indices[at++] = n;
+          indices[at++] = n + 1;
+          indices[at++] = n + 256;
+          indices[at++] = n + 1;
+          indices[at++] = n + 256;
+          indices[at++] = n + 256 + 1;
+        }
+      }
+      this.vao = gl.createVertexArray();
+      this.ibo = gl.createBuffer();
+      gl.bindVertexArray(this.vao);
+      gl.bindBuffer(gl.ELEMENT_ARRAY_BUFFER, this.ibo);
+      gl.bufferData(gl.ELEMENT_ARRAY_BUFFER, indices, gl.STATIC_DRAW);
+      gl.bindVertexArray(null);
+      this.indices = indices.length;
+      this.mapW = 0;
+    }
+
+    setRect(width, height) {
+      this.rect.width = Math.max(1, width);
+      this.rect.height = Math.max(1, height);
+      this.layout();
+    }
+
+    dpr() {
+      return Math.min(window.devicePixelRatio || 1, 1.25);
+    }
+
+    layout() {
+      const gl = this.gl;
+      const dpr = this.dpr();
+      const base = Math.min(1, Math.sqrt(PIXEL_BUDGET / Math.max(1, this.rect.width * this.rect.height * dpr * dpr)));
+      this.baseScale = base;
+      const scale = Math.max(0.4, base * this.adapt);
+      const w = Math.max(1, Math.round(this.rect.width * dpr * scale));
+      const h = Math.max(1, Math.round(this.rect.height * dpr * scale));
+      if (this.canvas.width !== w || this.canvas.height !== h) {
+        this.canvas.width = w;
+        this.canvas.height = h;
+      }
+      this.px.w = w;
+      this.px.h = h;
+
+      const mapW = Math.max(w, h) >= 1800 ? MAP_LARGE : MAP_SMALL;
+      if (mapW !== this.mapW) {
+        this.mapW = mapW;
+        for (let i = 0; i < 2; i++) {
+          gl.deleteTexture(this.mapTex[i]);
+          const texture = gl.createTexture();
+          this.mapTex[i] = texture;
+          gl.bindTexture(gl.TEXTURE_2D, texture);
+          const levels = Math.floor(Math.log2(mapW)) + 1;
+          gl.texStorage2D(gl.TEXTURE_2D, levels, gl.RGBA16F, mapW, mapW >> 1);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR_MIPMAP_LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+          gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+          gl.bindFramebuffer(gl.FRAMEBUFFER, this.mapFbo[i]);
+          gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, texture, 0);
+          if (gl.checkFramebufferStatus(gl.FRAMEBUFFER) !== gl.FRAMEBUFFER_COMPLETE) {
+            throw new Error('caustic target incomplete');
+          }
+        }
+        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      }
+      this.framing();
+    }
+
+    // 镜头随画幅移动：宽屏退后看清墙与地台，窄屏靠近水晶体。
+    framing() {
+      const aspect = this.rect.width / this.rect.height;
+      if (Math.abs(aspect - this.aspect) < 0.001) return;
+      this.aspect = aspect;
+      const near = [0.15, 1.9, 4.8];
+      const far = [0.2, 1.15, 6];
+      const nearFwd = [0.15, 0.95, 0.5];
+      const farFwd = [0.2, 1.5, 0.3];
+      const t = Math.min(1, Math.max(0, (aspect - 0.5) / 0.9));
+      const eye = this.cam.eye;
+      const fwd = this.cam.fwd;
+      for (let i = 0; i < 3; i++) {
+        eye[i] = near[i] + (far[i] - near[i]) * t;
+        fwd[i] = nearFwd[i] + (farFwd[i] - nearFwd[i]) * t - eye[i];
+      }
+      let len = Math.hypot(fwd[0], fwd[1], fwd[2]) || 1;
+      fwd[0] /= len; fwd[1] /= len; fwd[2] /= len;
+      this.cam.right[0] = -fwd[2];
+      this.cam.right[1] = 0;
+      this.cam.right[2] = fwd[0];
+      len = Math.hypot(this.cam.right[0], this.cam.right[1], this.cam.right[2]) || 1;
+      this.cam.right[0] /= len; this.cam.right[1] /= len; this.cam.right[2] /= len;
+      const right = this.cam.right;
+      const up = this.cam.up;
+      up[0] = right[1] * fwd[2] - right[2] * fwd[1];
+      up[1] = right[2] * fwd[0] - right[0] * fwd[2];
+      up[2] = right[0] * fwd[1] - right[1] * fwd[0];
+      this.cam.focal = Math.min(3, Math.max(1.5, aspect * 2.3));
+      this.computeHit();
+    }
+
+    computeHit() {
+      const cam = this.cam;
+      const ox = PLINTH.PLINTH_X_M - cam.eye[0];
+      const oy = PLINTH.PLINTH_H_M + PLINTH.R_M - cam.eye[1];
+      const oz = PLINTH.PLINTH_Z_M - cam.eye[2];
+      const along = ox * cam.fwd[0] + oy * cam.fwd[1] + oz * cam.fwd[2];
+      const half = this.rect.height / 2;
+      const sx = ((ox * cam.right[0] + oy * cam.right[1] + oz * cam.right[2]) / along) * cam.focal;
+      const sy = ((ox * cam.up[0] + oy * cam.up[1] + oz * cam.up[2]) / along) * cam.focal;
+      this.hit[0] = this.rect.width / 2 + sx * half;
+      this.hit[1] = half - sy * half;
+      this.hit[2] = (PLINTH.R_M / along) * cam.focal * half;
+    }
+
+    configure(seed) {
+      const rand = mulberry32(seed);
+      const tint = TINT_NAMES[Math.floor(rand() * TINT_NAMES.length)];
+      const ior = 1.32 + rand() * 0.1;
+      this.tintName = tint;
+      this.absorb.set(TINTS[tint]);
+      this.iors[0] = 1 + (ior - 1) * 0.988;
+      this.iors[1] = ior;
+      this.iors[2] = 1 + (ior - 1) * 1.0168;
+      this.shape = Math.floor(rand() * 3);
+      this.from = this.shape;
+      this.morph = 1;
+      this.wave = 0.34 + rand() * 0.14;
+      this.flow = 0.45 + rand() * 0.25;
+      this.sunK = 0.3 + rand() * 0.1;
+      this.sunBase = this.sunK;
+      this.sunTarget = this.sunK;
+      // 同一 seed 的波纹相位一致，多显示器上看起来是同一件东西。
+      this.t = rand() * 30;
+      this.sq.fill(0);
+      this.sqV.fill(0);
+      this.pointer = -1;
+      this.aim();
+    }
+
+    aim() {
+      const k = this.sunK;
+      const azimuth = ((20 + (56 - 20) * k) * Math.PI) / 180;
+      const elevation = ((22 + (17 - 22) * k) * Math.PI) / 180;
+      const sun = this.sun;
+      sun[0] = -Math.cos(elevation) * Math.cos(azimuth);
+      sun[1] = Math.sin(elevation);
+      sun[2] = Math.cos(elevation) * Math.sin(azimuth);
+      const center = PLINTH.PLINTH_H_M + PLINTH.R_M;
+      const along = (PLINTH.WALL_X_M - PLINTH.PLINTH_X_M) / sun[0];
+      // 窗沿着光线退到墙上，始终把水晶体包在光里。
+      this.win[0] = PLINTH.PLINTH_Z_M + sun[2] * along + 0.05;
+      this.win[1] = center + sun[1] * along + 0.25;
+    }
+
+    setProgress(progress) {
+      this.sunTarget = this.sunBase + SUN_DRIFT * progress;
+    }
+
+    bound() {
+      return SHAPE_BOUNDS[this.shape] + this.wave * WAVE_AMP * 1.2 + SQUISH_CLAMP * 1.1;
+    }
+
+    advance(dt) {
+      this.t += dt * this.flow * 2.2;
+      const w = 2 * Math.PI * WAVE_FREQ;
+      for (let i = 0; i < 3; i++) {
+        let v = this.sqV[i];
+        let a = this.sq[i];
+        v += (-w * w * a - 0.22 * w * v) * dt;
+        a += v * dt;
+        if (a > SQUISH_CLAMP) a = SQUISH_CLAMP;
+        if (a < -0.06) a = -0.06;
+        this.sqV[i] = v;
+        this.sq[i] = a;
+      }
+    }
+
+    poke(dx, dy) {
+      const v = this.sqV;
+      const r = 0.0018 * Math.PI * WAVE_FREQ;
+      v[0] += Math.abs(dx) * r * (this.sq[0] > 0 ? -1 : 1);
+      v[1] += Math.abs(dy) * r * (this.sq[1] > 0 ? -1 : 1);
+      v[2] += (dx - dy) * r * 0.5;
+    }
+
+    over(x, y) {
+      return Math.hypot(x - this.hit[0], y - this.hit[1]) < this.hit[2] * 1.15;
+    }
+
+    down(x, y, id) {
+      if (this.pointer !== -1 || !this.over(x, y)) return;
+      this.pointer = id;
+      this.lastX = x;
+      this.lastY = y;
+      this.poke(0, -24);
+    }
+
+    move(x, y, id) {
+      if (id !== this.pointer) return;
+      this.poke(x - this.lastX, y - this.lastY);
+      this.lastX = x;
+      this.lastY = y;
+    }
+
+    up(id) {
+      if (id === this.pointer) this.pointer = -1;
+    }
+
+    common(locations) {
+      const gl = this.gl;
+      gl.uniform1f(locations.uTime, this.t);
+      gl.uniform1f(locations.uWave, this.wave * WAVE_AMP);
+      gl.uniform4fv(locations.uSq, this.sq);
+      gl.uniform1i(locations.uShape, this.shape);
+      gl.uniform1i(locations.uFrom, this.from);
+      const morph = this.morph;
+      gl.uniform1f(locations.uMorph, morph * morph * (3 - 2 * morph));
+      gl.uniform1f(locations.uBound, this.bound());
+      gl.uniform3fv(locations.uSun, this.sun);
+      gl.uniform2fv(locations.uWin, this.win);
+      gl.uniform3fv(locations.uIor, this.iors);
+      gl.uniform3fv(locations.uAbsorb, this.absorb);
+    }
+
+    draw() {
+      const gl = this.gl;
+      gl.disable(gl.BLEND);
+      gl.bindFramebuffer(gl.FRAMEBUFFER, this.rayFbo);
+      gl.viewport(0, 0, 256, 256);
+      gl.useProgram(this.trace);
+      this.common(this.tu);
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+
+      gl.useProgram(this.caustic);
+      const cu = this.cu;
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.rayTex[3]);
+      gl.uniform1i(cu.uPack, 1);
+      gl.uniform1i(cu.uPos, 0);
+      gl.uniform1f(cu.uCell, (2 * this.bound()) / 255);
+      gl.uniform1f(cu.uGain, CAUSTIC_GAIN);
+      gl.bindVertexArray(this.vao);
+      gl.enable(gl.BLEND);
+      gl.blendFunc(gl.ONE, gl.ONE);
+      for (let recv = 0; recv < 2; recv++) {
+        const rect = recv === 0 ? WALL_RECT : FLOOR_RECT;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, this.mapFbo[recv]);
+        gl.viewport(0, 0, this.mapW, this.mapW >> 1);
+        gl.colorMask(true, true, true, true);
+        gl.clearColor(0, 0, 0, 1);
+        gl.clear(gl.COLOR_BUFFER_BIT);
+        gl.uniform1i(cu.uRecv, recv);
+        gl.uniform4f(cu.uRect, rect[0], rect[1], rect[2], rect[3]);
+        for (let ch = 0; ch < 3; ch++) {
+          gl.colorMask(ch === 0, ch === 1, ch === 2, false);
+          gl.activeTexture(gl.TEXTURE0);
+          gl.bindTexture(gl.TEXTURE_2D, this.rayTex[ch]);
+          gl.uniform1i(cu.uChan, ch);
+          gl.drawElements(gl.TRIANGLES, this.indices, gl.UNSIGNED_INT, 0);
+        }
+      }
+      gl.colorMask(true, true, true, true);
+      gl.disable(gl.BLEND);
+      gl.bindVertexArray(null);
+      for (let i = 0; i < 2; i++) {
+        gl.bindTexture(gl.TEXTURE_2D, this.mapTex[i]);
+        gl.generateMipmap(gl.TEXTURE_2D);
+      }
+
+      gl.bindFramebuffer(gl.FRAMEBUFFER, null);
+      gl.viewport(0, 0, this.px.w, this.px.h);
+      gl.useProgram(this.room);
+      const ru = this.ru;
+      this.common(ru);
+      gl.activeTexture(gl.TEXTURE0);
+      gl.bindTexture(gl.TEXTURE_2D, this.mapTex[0]);
+      gl.uniform1i(ru.uWall, 0);
+      gl.activeTexture(gl.TEXTURE1);
+      gl.bindTexture(gl.TEXTURE_2D, this.mapTex[1]);
+      gl.uniform1i(ru.uFloor, 1);
+      gl.uniform4f(ru.uWallRect, WALL_RECT[0], WALL_RECT[1], WALL_RECT[2], WALL_RECT[3]);
+      gl.uniform4f(ru.uFloorRect, FLOOR_RECT[0], FLOOR_RECT[1], FLOOR_RECT[2], FLOOR_RECT[3]);
+      gl.uniform1f(ru.uGain, CAUSTIC_GAIN);
+      gl.uniform3fv(ru.uEye, this.cam.eye);
+      gl.uniform3fv(ru.uRight, this.cam.right);
+      gl.uniform3fv(ru.uUp, this.cam.up);
+      gl.uniform3fv(ru.uFwd, this.cam.fwd);
+      gl.uniform1f(ru.uFocal, this.cam.focal);
+      gl.uniform2f(ru.uRes, this.px.w, this.px.h);
+      gl.uniform1f(ru.uLight, smooth01(this.light, 0, 1));
+      gl.drawArrays(gl.TRIANGLES, 0, 3);
+    }
+
+    noteFrame(ms) {
+      this.frames++;
+      this.frameAvg = this.frameAvg * 0.9 + ms * 0.1;
+      if (this.frames < 90) return;
+      if (this.adaptCooldown > 0) {
+        this.adaptCooldown--;
+        return;
+      }
+      if (this.frameAvg > 26 && this.adapt > 0.55) {
+        this.adapt *= 0.85;
+        this.adaptCooldown = 60;
+        this.layout();
+      }
+    }
+  }
+
+  // ==========================================================================
+  // 2. 页面：淡入、收尾、HUD、软休息的按钮与确认框
+  // ==========================================================================
+  const reducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let engine = null;
+  let running = false;
+  let outroStarted = false;
+  let outroT = 0;
+  let donePosted = false;
+  let light = 0;
+  let hudShown = false;
+  let raf = 0;
+  let lastTs = 0;
+  let sessionSeed = 0;
+  let demo = false;
+
+  function bootScene() {
+    try {
+      engine = new CausticEngine(dom.canvas);
+      engine.configure(1);
+      resize();
+      engine.draw();
+      console.log('[caustic] gl', dom.canvas.width + '×' + dom.canvas.height);
+    } catch (error) {
+      engine = null;
+      console.warn('[caustic] fallback', error && error.message);
+    }
+    requestAnimationFrame(() => {
+      emitHost('ready');
+      if (!isHosted) startStandalone();
+    });
+  }
+  function resize() {
+    const width = Math.max(1, document.documentElement.clientWidth || window.innerWidth);
+    const height = Math.max(1, document.documentElement.clientHeight || window.innerHeight);
+    if (!engine) return;
+    try {
+      engine.setRect(width, height);
+    } catch (error) {
+      console.warn('[caustic] resize failed, falling back', error && error.message);
+      engine = null;
+    }
+  }
+
+  function startSession(seed) {
+    if (!Number.isFinite(seed)) seed = Date.now();
+    sessionSeed = seed;
+    running = true;
+    outroStarted = false;
+    outroT = 0;
+    donePosted = false;
+    light = 0;
+    hudShown = false;
+    dom.hud.classList.remove('in');
+    dom.actions.classList.remove('in');
+    closeDialog();
+    resetProgress();
+    if (engine) {
+      engine.configure(seed);
+      engine.light = 0;
+    }
+    if (dom.fallback) dom.fallback.style.opacity = '0';
+    renderHud();
+    schedule();
+  }
+
+  function resetProgress() {
+    dom.fill.style.transition = 'none';
+    dom.fill.style.transform = 'scaleX(1)';
+    // 下一帧恢复过渡，避免从上一轮的位置滑进来。
+    requestAnimationFrame(() => {
+      dom.fill.style.transition = '';
+    });
+  }
+
+  function startOutro() {
+    if (!running || outroStarted) return;
+    outroStarted = true;
+    outroT = 0;
+    dom.hud.classList.remove('in');
+    dom.actions.classList.remove('in');
+    closeDialog();
+  }
+
+  function stopSession() {
+    running = false;
+    outroStarted = false;
+    donePosted = false;
+    light = 0;
+    hudShown = false;
+    dom.hud.classList.remove('in');
+    dom.actions.classList.remove('in');
+    closeDialog();
+    if (engine) {
+      engine.light = 0;
+      engine.draw();
+    }
+    if (dom.fallback) dom.fallback.style.opacity = '0';
+    cancelAnimationFrame(raf);
+    raf = 0;
+    lastTs = 0;
+  }
+
+  function schedule() {
+    if (!raf) raf = requestAnimationFrame(frame);
+  }
+
+  function frame(ts) {
+    raf = 0;
+    const dt = lastTs ? Math.min(0.05, Math.max(0, (ts - lastTs) / 1000)) : 1 / 60;
+    const frameMs = lastTs ? ts - lastTs : 16.7;
+    lastTs = ts;
+
+    if (running && !outroStarted) {
+      light = Math.min(1, light + dt / 1.9);
+      if (!hudShown && light > 0.6) {
+        hudShown = true;
+        dom.hud.classList.add('in');
+        renderHud();
+      }
+    } else if (outroStarted) {
+      outroT += dt;
+      light = 1 - smooth01(outroT, 0.15, 4.55);
+      if (outroT >= 4.9 && !donePosted) {
+        donePosted = true;
+        light = 0;
+        emitHost('done');
+        running = false;
+        if (!isHosted) demoRestart();
+      }
+    }
+
+    if (engine) {
+      // 日光随本轮的进度缓缓移动；收尾时不再推进。
+      if (running && !outroStarted) {
+        engine.sunK += (engine.sunTarget - engine.sunK) * Math.min(1, dt * 1.1);
+        engine.aim();
+        if (!reducedMotion) engine.advance(dt);
+      }
+      engine.light = light;
+      engine.draw();
+      engine.noteFrame(frameMs);
+    } else if (dom.fallback) {
+      dom.fallback.style.opacity = String(smooth01(light, 0, 1));
+    }
+
+    const keepGoing = (running && !reducedMotion) ||
+      (outroStarted && outroT < 5.2) ||
+      (!outroStarted && running && light < 1);
+    if (keepGoing) schedule();
+    else lastTs = 0;
+  }
+
+  function renderHud() {
+    const locked = !!state.locked;
+    const showPostpone = !locked && !state.forced && state.canPostpone;
+    const showSkip = !locked && !state.forced && state.canSkip;
+    dom.label.textContent = state.label || DEFAULT_LABEL;
+    dom.clock.textContent = formatClock(state.remainingMs);
+    dom.btnPostpone.hidden = !showPostpone;
+    dom.btnSkip.hidden = !showSkip;
+    dom.btnPostpone.textContent = '延后 ' + state.postponeMinutes + ' 分钟';
+    dom.actions.classList.toggle(
+      'in',
+      !!state.active && hudShown && !outroStarted && !state.forced && (showPostpone || showSkip),
+    );
+    const total = state.totalMs > 0 ? state.totalMs : 1;
+    const part = Math.max(0, Math.min(1, state.remainingMs / total));
+    dom.fill.style.transform = 'scaleX(' + part.toFixed(4) + ')';
+  }
+
+  function renderConfirmation() {
+    const confirmation = state.actionConfirmation;
+    if (!confirmation || !state.active || state.locked || outroStarted) {
+      closeDialog();
+      return;
+    }
+    const skip = confirmation.action === 'skip';
+    dom.confirmTitle.textContent = skip ? '提前结束这次休息？' : '延后这次休息？';
+    dom.confirmNote.textContent = skip
+      ? '下次为强制休息，届时不能跳过或延后。'
+      : '休息会推迟 ' + state.postponeMinutes + ' 分钟。';
+    dom.confirmAccept.textContent = skip ? '确认跳过' : '确认延后';
+    if (!dom.dialog.hidden) return;
+    dom.dialog.hidden = false;
+    dom.veil.hidden = false;
+    dom.confirmCancel.focus();
+  }
+
+  function closeDialog() {
+    dom.dialog.hidden = true;
+    dom.veil.hidden = true;
+  }
+
+  function replyConfirmation(confirmed) {
+    const confirmation = state.actionConfirmation;
+    if (!confirmation) return;
+    emitHost((confirmed ? 'confirm:' : 'cancel:') + confirmation.id);
+    closeDialog();
+  }
+
+  // 宿主状态。字段缺省时保留上一次的值，与香篆页一致。
+  function applyState(next) {
+    if (!next || typeof next !== 'object') return;
+    const wasActive = state.active;
+
+    if (typeof next.active === 'boolean') state.active = next.active;
+    if (typeof next.totalMs === 'number' && next.totalMs > 0) state.totalMs = next.totalMs;
+    if (typeof next.remainingMs === 'number') state.remainingMs = Math.max(0, next.remainingMs);
+    if (typeof next.progress === 'number') {
+      state.progress = Math.max(0, Math.min(1, next.progress));
+    } else if (state.totalMs > 0) {
+      state.progress = Math.max(0, Math.min(1, 1 - state.remainingMs / state.totalMs));
+    }
+    if (typeof next.canPostpone === 'boolean') state.canPostpone = next.canPostpone;
+    if (Number.isFinite(next.postponeMinutes) && next.postponeMinutes > 0) state.postponeMinutes = next.postponeMinutes;
+    if (typeof next.canSkip === 'boolean') state.canSkip = next.canSkip;
+    if ('actionConfirmation' in next) state.actionConfirmation = next.actionConfirmation;
+    if (typeof next.forced === 'boolean') state.forced = next.forced;
+    if (typeof next.locked === 'boolean') state.locked = next.locked;
+    if (typeof next.label === 'string' && next.label.trim()) state.label = next.label.trim();
+    if (typeof next.outro === 'boolean') state.outro = next.outro;
+
+    if (engine) engine.setProgress(state.progress);
+
+    if (state.active && !wasActive) {
+      state.outro = next.outro === true;
+      startSession(Number.isFinite(next.visitSeed) ? next.visitSeed : state.visitSeed);
+      state.visitSeed = Number.isFinite(next.visitSeed) ? next.visitSeed : state.visitSeed;
+    } else if (!state.active && wasActive) {
+      stopSession();
+    }
+
+    // 宿主在归零的瞬间显式发 outro；错过了也要自己收尾。
+    if (state.active && state.outro === true && !outroStarted) startOutro();
+    if (state.active && running && state.remainingMs <= 0 && !outroStarted) startOutro();
+
+    renderHud();
+    renderConfirmation();
+  }
+
+  // ==========================================================================
+  // 3. 独立预览：不在宿主里时自己跑一轮，方便在浏览器里看画面与收尾
+  // ==========================================================================
+  function startStandalone() {
+    demo = true;
+    state.active = true;
+    state.locked = false;
+    state.canPostpone = true;
+    state.canSkip = true;
+    state.totalMs = 90_000;
+    state.remainingMs = state.totalMs;
+    state.progress = 0;
+    state.label = DEFAULT_LABEL;
+    state.outro = false;
+    startSession(Date.now());
+    setInterval(() => {
+      if (!demo || !state.active || outroStarted) return;
+      state.remainingMs = Math.max(0, state.remainingMs - 1000);
+      state.progress = 1 - state.remainingMs / state.totalMs;
+      if (engine) engine.setProgress(state.progress);
+      renderHud();
+      if (state.remainingMs === 0) {
+        state.outro = true;
+        startOutro();
+      }
+    }, 1000);
+  }
+
+  let demoRestartAt = 0;
+  function demoRestart() {
+    if (demoRestartAt) return;
+    demoRestartAt = setTimeout(() => {
+      demoRestartAt = 0;
+      if (!demo || isHosted) return;
+      state.outro = false;
+      state.remainingMs = state.totalMs;
+      state.progress = 0;
+      state.active = true;
+      startSession(Date.now());
+    }, 2600);
+  }
+
+  // ==========================================================================
+  // 4. 接线
+  // ==========================================================================
+  window.shrineState = applyState;
+
+  window.addEventListener('message', (event) => {
+    try {
+      const payload = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+      if (!payload || typeof payload !== 'object') return;
+      if (payload.type === 'state' && payload.state) applyState(payload.state);
+      else if (payload.type === 'state') applyState(payload);
+      else if ('remainingMs' in payload || 'progress' in payload || 'active' in payload || 'outro' in payload) {
+        applyState(payload);
+      }
+    } catch (error) {
+      // 宿主消息坏掉时宁可不动。
+    }
+  });
+
+  dom.btnPostpone.addEventListener('click', () => emitHost('postpone'));
+  dom.btnSkip.addEventListener('click', () => emitHost('skip'));
+  dom.confirmCancel.addEventListener('click', () => replyConfirmation(false));
+  dom.confirmAccept.addEventListener('click', () => replyConfirmation(true));
+  document.addEventListener('keydown', (event) => {
+    if (event.key === 'Escape' && !dom.dialog.hidden) {
+      event.preventDefault();
+      replyConfirmation(false);
+    }
+  });
+
+  // 拖水晶体：只在没锁定的软休息里响应，且不改光标（整页没有光标）。
+  let pointerId = -1;
+  dom.canvas.addEventListener('pointerdown', (event) => {
+    if (!engine || !running || outroStarted || state.locked || reducedMotion) return;
+    pointerId = event.pointerId;
+    dom.canvas.setPointerCapture(pointerId);
+    engine.down(event.clientX, event.clientY, pointerId);
+  });
+  dom.canvas.addEventListener('pointermove', (event) => {
+    if (!engine || pointerId !== event.pointerId) return;
+    engine.move(event.clientX, event.clientY, event.pointerId);
+  });
+  const releasePointer = (event) => {
+    if (!engine || pointerId !== event.pointerId) return;
+    engine.up(event.pointerId);
+    pointerId = -1;
+  };
+  dom.canvas.addEventListener('pointerup', releasePointer);
+  dom.canvas.addEventListener('pointercancel', releasePointer);
+
+  window.addEventListener('resize', () => {
+    resize();
+    if (engine && !running) engine.draw();
+  });
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      cancelAnimationFrame(raf);
+      raf = 0;
+      lastTs = 0;
+    } else if (running || outroStarted) {
+      schedule();
+    }
+  });
+  window.addEventListener('pagehide', () => {
+    cancelAnimationFrame(raf);
+    raf = 0;
+  });
+
+  window.causticStats = () => ({
+    mode: engine ? 'webgl' : 'fallback',
+    buffer: dom.canvas.width + '×' + dom.canvas.height,
+    scale: engine ? engine.baseScale * engine.adapt : 0,
+    frameMs: engine ? Math.round(engine.frameAvg * 10) / 10 : 0,
+    tint: engine ? engine.tintName : '-',
+    shape: engine ? engine.shape : -1,
+    seed: sessionSeed,
+    active: state.active,
+    outro: outroStarted,
+    light,
+  });
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', bootScene);
+  } else {
+    bootScene();
+  }
+})();
+</script>
+</body>
+</html>
